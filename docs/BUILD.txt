@@ -1,0 +1,52 @@
+# 构建、烧录与环境复现
+
+工程：`E:\Codex\outputs\esp32-speaker-foundation`。SDK 与工具位于 `E:\Codex\work\esp32-speaker-foundation`，不安装到用户主目录。
+
+## 已有环境
+
+在 PowerShell 中运行：
+
+```powershell
+Set-Location E:\Codex\outputs\esp32-speaker-foundation
+.\tools\build.ps1
+.\tools\build.ps1 -Action menuconfig
+.\tools\build.ps1 -Action size
+```
+
+每次脚本核对 SDK commit 并激活官方 ESP-IDF 环境，构建目录为 `E:\Codex\work\esp32-speaker-foundation\build`。修改 LCD 配置后需要重新构建。sdkconfig.defaults 仅为首次生成配置的默认值，之后 menuconfig 保存的 sdkconfig 优先。
+
+## 新电脑安装
+
+先准备 Git、受该 IDF 支持的 Python（本次使用 Python 3.12），再运行 `tools\setup.ps1`。脚本拉取 v5.5.6 与对应子模块，安装 esp32 交叉工具链及隔离 Python 环境。网络中断后核对日志，再重试；不要把子模块不完整误判为工程源码错误。
+
+也可按官方步骤手动安装：
+
+若 GitHub 子模块下载持续失败，可从上述官方发布页下载包含 `.git` 和全部子模块的完整 `esp-idf-v5.5.6.zip`（不是自动生成的 Source code 包），解压到脚本指定的 SDK 目录。本次已使用此方式补齐依赖；原先不完整的克隆保留在 `E:\Codex\work\esp32-speaker-foundation\git-clone-incomplete`，供排查，不用于构建。完整发布包保存在同一 work 目录，下载文件的 SHA256 记录在工程 `sdk-archive-sha256.json`。
+
+```powershell
+git clone --branch v5.5.6 --depth 1 --recursive --shallow-submodules https://github.com/espressif/esp-idf.git E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6
+$env:IDF_TOOLS_PATH='E:\Codex\work\esp32-speaker-foundation\idf-tools'
+$sdk='E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6'
+python "$sdk\tools\idf_tools.py" install --targets=esp32
+python "$sdk\tools\idf_tools.py" install-python-env
+. "$sdk\export.ps1"
+Set-Location E:\Codex\outputs\esp32-speaker-foundation
+idf.py -B E:\Codex\work\esp32-speaker-foundation\build build
+```
+
+工程固定 `esp32`，无需切换为其他目标。全新通用 ESP-IDF 工程的标准命令是 `idf.py set-target esp32`；它会重置配置，现有工程有自定义配置时应先备份。
+
+## 烧录与串口
+
+确认硬件、电源及电脑串口号后，用户自行执行，例如将 COM5 换成实际端口：
+
+```powershell
+.\tools\build.ps1 -Action flash -Port COM5
+.\tools\build.ps1 -Action monitor -Port COM5
+```
+
+`Ctrl+]` 退出串口监视。本次任务不自动擦除或烧录设备。固件遇到 NVS 无空间或版本不匹配会报错终止，不自动擦除用户数据。确需清空时先确认数据不需要保留，再由用户执行官方 erase-flash 维护命令。
+
+默认假设 4MB Flash、UART 下载，无 OTA。配对后可测试 SBC 双声道音频；手机音量不保证受框架控制，因为 AVRCP 和应用音量尚未实现。
+
+官方说明：[获取 v5.5.6](https://github.com/espressif/esp-idf/releases/tag/v5.5.6)、[ESP32 入门](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32/get-started/index.html)。构建实测结果另见验收记录，不能由本说明推断硬件已通过。

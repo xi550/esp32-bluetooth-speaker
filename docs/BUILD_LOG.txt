@@ -1,0 +1,69 @@
+Activating ESP-IDF 5.5
+Setting IDF_PATH to 'E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6'.
+* Checking python version ... 3.12.4
+* Checking python dependencies ... OK
+* Deactivating the current ESP-IDF environment (if any) ... OK
+* Establishing a new ESP-IDF environment ... OK
+* Identifying shell ... pwsh.exe
+* Detecting outdated tools in system ... OK - no outdated tools found
+
+Done! You can now compile ESP-IDF projects.
+Go to the project directory and run:
+
+  idf.py build
+
+Executing action: all (aliases: build)
+Running ninja in directory E:\Codex\work\esp32-speaker-foundation\build
+Executing "ninja all"...
+[1/9] Performing build step for 'bootloader'
+
+[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build\bootloader\esp-idf\esptool_py && E:\Codex\work\esp32-speaker-foundation\idf-tools\python_env\idf5.5_py3.12_env\Scripts\python.exe E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 E:/Codex/work/esp32-speaker-foundation/build/bootloader/bootloader.bin"
+
+
+Bootloader binary size 0x6590 bytes. 0xa70 bytes (9%) free.
+
+
+
+[2/9] No install step for 'bootloader'
+
+[3/9] Completed 'bootloader'
+
+[4/9] Building C object esp-idf/speaker_service/CMakeFiles/__idf_speaker_service.dir/speaker_service.c.obj
+
+[5/9] Linking C static library esp-idf\speaker_service\libspeaker_service.a
+
+[6/9] Generating esp-idf/esp_system/ld/sections.ld
+
+[7/9] Linking CXX executable esp32_speaker_foundation.elf
+
+[8/9] Generating binary image from built executable
+
+esptool.py v4.13.0
+
+
+Creating esp32 image...
+
+
+Merged 2 ELF sections
+
+
+Successfully created esp32 image.
+
+
+Generated E:/Codex/work/esp32-speaker-foundation/build/esp32_speaker_foundation.bin
+
+[9/9] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build\esp-idf\esptool_py && E:\Codex\work\esp32-speaker-foundation\idf-tools\python_env\idf5.5_py3.12_env\Scripts\python.exe E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/components/partition_table/check_sizes.py --offset 0x8000 partition --type app E:/Codex/work/esp32-speaker-foundation/build/partition_table/partition-table.bin E:/Codex/work/esp32-speaker-foundation/build/esp32_speaker_foundation.bin"
+
+esp32_speaker_foundation.bin binary size 0xe4b90 bytes. Smallest app partition is 0x300000 bytes. 0x21b470 bytes (70%) free.
+
+
+
+
+Project build complete. To flash, run:
+ idf.py flash
+or
+ idf.py -p PORT flash
+or
+ python -m esptool --chip esp32 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 4MB --flash_freq 40m 0x1000 ..\..\work\esp32-speaker-foundation\build\bootloader\bootloader.bin 0x8000 ..\..\work\esp32-speaker-foundation\build\partition_table\partition-table.bin 0x10000 ..\..\work\esp32-speaker-foundation\build\esp32_speaker_foundation.bin
+or from the "E:\Codex\work\esp32-speaker-foundation\build" directory
+ python -m esptool --chip esp32 -b 460800 --before default_reset --after hard_reset write_flash "@flash_args"

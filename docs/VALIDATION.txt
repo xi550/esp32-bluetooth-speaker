@@ -1,0 +1,119 @@
+# ESP32 音箱框架构建验收记录
+
+日期：2026-11-18（Asia/Shanghai）。
+
+- 结果：官方 idf.py build 最终返回 0；应用、引导程序及分区表均生成，最终增量构建无编译警告或错误。
+- SDK：官方 ESP-IDF v5.5.6，commit 880a203ae603d08a94d06aa01e0d6761958e5e9e；主仓库与递归子模块版本已核对。
+- 项目版本：0.1.0；目标：esp32；配置启用 Classic Bluetooth/A2DP，控制器为 BR/EDR only，使用内部 SBC 解码路径。
+- 环境：Windows / Python 3.12.4 / Xtensa GCC 14.2.0（esp-14.2.0_20260121）。SDK、工具及构建目录均在 E:\Codex\work\esp32-speaker-foundation。
+- 构建入口：工程 tools/build.ps1，内部调用官方 idf.py；size 检查返回 0，分区容量检查通过。
+- 应用二进制：936848 字节；SHA256：7442fb5a0780bb24075e91407ea588ce7cc04ab1fdc78f5210616dd0f195ba92。
+- 固件交付：工程 firmware 目录保留三份 bin、官方 flash_args 和 manifest.json；工程 docs 目录保留最终构建日志、size 日志及 SDK 子模块版本记录。
+- 默认 Flash 4MB、factory 3MB、DIO/40MHz，无 OTA；实物 Flash 容量待确认。
+
+## 已完成
+
+分层 CMake/Kconfig 工程、固定 board pin map、I2S 双声道 PCM16 输出、官方 A2DP 内部 SBC 解码接入、有界 PCM 队列与工作任务、ST7789 SPI HAL、五个原始按键接口、空应用入口与 UI/控制占位、环境及构建烧录脚本、开发交接及硬件检查文档。
+
+## 未完成与验证边界
+
+未烧录或连接实板。模组丝印、蓝牙配对与实际播放、采样率切换、SD_MODE 左右声道、LCD 面板参数/背光、按键电路、持续播放和内存/任务栈余量均未做硬件验收。
+
+UI、绘图/字体/页面、按键消抖与动作映射、音量、曲目、播放控制、AVRCP、应用事件模型与状态机均留给实习生。LCD 默认关闭初始化，240×240 等参数为占位。当前不处理单声道 SBC；底层没有动态销毁、完整错误恢复、硬件静音或爆音处理。内部解码 PCM 回调属于此固定版本仍支持的 legacy API，升级 SDK 需重新评估。
+
+## 固件大小输出
+
+```text
+Activating ESP-IDF 5.5
+Setting IDF_PATH to 'E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6'.
+* Checking python version ... 3.12.4
+* Checking python dependencies ... OK
+* Deactivating the current ESP-IDF environment (if any) ... OK
+* Establishing a new ESP-IDF environment ... OK
+* Identifying shell ... pwsh.exe
+* Detecting outdated tools in system ... OK - no outdated tools found
+
+Done! You can now compile ESP-IDF projects.
+Go to the project directory and run:
+
+  idf.py build
+
+Executing action: size
+Running ninja in directory E:\Codex\work\esp32-speaker-foundation\build
+Executing "ninja all"...
+[1/4] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build\esp-idf\esptool_py && E:\Codex\work\esp32-speaker-foundation\idf-tools\python_env\idf5.5_py3.12_env\Scripts\python.exe E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/components/partition_table/check_sizes.py --offset 0x8000 partition --type app E:/Codex/work/esp32-speaker-foundation/build/partition_table/partition-table.bin E:/Codex/work/esp32-speaker-foundation/build/esp32_speaker_foundation.bin"
+
+esp32_speaker_foundation.bin binary size 0xe4b90 bytes. Smallest app partition is 0x300000 bytes. 0x21b470 bytes (70%) free.
+
+
+[2/4] Performing build step for 'bootloader'
+
+[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build\bootloader\esp-idf\esptool_py && E:\Codex\work\esp32-speaker-foundation\idf-tools\python_env\idf5.5_py3.12_env\Scripts\python.exe E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 E:/Codex/work/esp32-speaker-foundation/build/bootloader/bootloader.bin"
+
+
+Bootloader binary size 0x6590 bytes. 0xa70 bytes (9%) free.
+
+
+
+[3/4] No install step for 'bootloader'
+
+[4/4] Completed 'bootloader'
+
+Running ninja in directory E:\Codex\work\esp32-speaker-foundation\build
+Executing "ninja size"...
+[0/1] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build && E:\Codex\work\esp32-speaker-foundation\idf-tools\tools\cmake\3.30.2\bin\cmake.exe -D IDF_SIZE_TOOL=E:/Codex/work/esp32-speaker-foundation/idf-tools/python_env/idf5.5_py3.12_env/Scripts/python.exe;-m;esp_idf_size -D MAP_FILE=E:/Codex/work/esp32-speaker-foundation/build/esp32_speaker_foundation.map -D OUTPUT_JSON= -P E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/tools/cmake/run_size_tool.cmake"
+
+                           Memory Type Usage Summary                            
+
++------------------------------------------------------------------------------+
+
+| Memory            |              |          |                |               |
+
+| Type/Section      | Used [bytes] | Used [%] | Remain [bytes] | Total [bytes] |
+
+|-------------------+--------------+----------+----------------+---------------|
+
+| Flash Code        |       646088 |          |                |               |
+
+|    .text          |       646088 |          |                |               |
+
+| Flash Data        |       181308 |          |                |               |
+
+|    .rodata        |       181052 |          |                |               |
+
+|    .appdesc       |          256 |          |                |               |
+
+| IRAM              |        89871 |    68.57 |          41201 |        131072 |
+
+|    .text          |        88843 |    67.78 |                |               |
+
+|    .vectors       |         1028 |     0.78 |                |               |
+
+| DRAM              |        62444 |    50.12 |          62136 |        124580 |
+
+|    .bss           |        43008 |    34.52 |                |               |
+
+|    .data          |        19436 |     15.6 |                |               |
+
+| RTC SLOW          |           56 |     0.68 |           8136 |          8192 |
+
+|    .force_slow    |           32 |     0.39 |                |               |
+
+|    .rtc_slow_rese |           24 |     0.29 |                |               |
+
+| rved              |              |          |                |               |
+
++------------------------------------------------------------------------------+
+
+Total image size: 936735 bytes (.bin may be padded larger)
+
+Note: The reported total sizes may be smaller than those in the technical 
+
+reference manual due to reserved memory and application configuration. The total
+
+flash size available for the application is not included by default, as it 
+
+cannot be reliably determined due to the presence of other data like the 
+
+bootloader, partition table, and application partition size.
+```

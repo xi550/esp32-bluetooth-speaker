@@ -1,0 +1,12 @@
+{
+  "version": "v5.5.6",
+  "commit": "880a203ae603d08a94d06aa01e0d6761958e5e9e",
+  "repository": "https://github.com/espressif/esp-idf.git",
+  "complete_archive": "https://dl.espressif.com/github_assets/espressif/esp-idf/releases/download/v5.5.6/esp-idf-v5.5.6.zip",
+  "archive_sha256": "d6c08f2bd7f0875c46c65cb5a34f83337bea092c9b0337405f62d1923ed73ddb",
+  "sdk_path": "E:\\Codex\\work\\esp32-speaker-foundation\\esp-idf-v5.5.6",
+  "tools_path": "E:\\Codex\\work\\esp32-speaker-foundation\\idf-tools",
+  "target": "esp32",
+  "acquired_date": "2026-11-18",
+  "notes": "Git clone succeeded at the requested commit but submodule fetches timed out. Replaced task-created SDK directory with official complete archive, retained incomplete clone separately. Recursive submodule status verified against superproject commits. SHA256 is locally calculated, not an independently published checksum."
+}

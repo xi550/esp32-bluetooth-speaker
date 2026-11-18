@@ -1,0 +1,1 @@
+Markdown: C:/Users/RSR/Desktop/doc/ESP32_Speaker_Foundation_{README,HANDOFF,HARDWARE,BUILD}.md

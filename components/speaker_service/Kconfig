@@ -1,0 +1,5 @@
+menu "Speaker service"
+config SPEAKER_BT_NAME
+ string "Bluetooth name"
+ default "ESP32-Speaker-Lab"
+endmenu
