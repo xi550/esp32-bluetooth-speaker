@@ -32,7 +32,7 @@ esp32-speaker-foundation/
     app_main.c               启动入口及应用接入位置
     app_ui.c                 空白学习任务
     app_controls.c           空白学习任务
-  tools/                     setup.ps1、build.ps1
+  tools/                     setup.ps1、build.ps1；Linux 使用 setup.sh、build.sh
   DOCUMENTATION.txt          外置 Markdown 文档位置
 ```
 
@@ -51,3 +51,40 @@ LCD 默认不初始化；尺寸、偏移、颜色反转可在 menuconfig 配置�
 Markdown 文档按用户约定集中存放在桌面 doc 目录：同名前缀的 BUILD、HANDOFF、HARDWARE，以及构建验收记录。工程根目录 README.txt 与 docs 下的文本副本用于便携交接。
 
 官方资料：[v5.5.6 发布说明](https://github.com/espressif/esp-idf/releases/tag/v5.5.6)、[该版本 A2DP API](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32/api-reference/bluetooth/esp_a2dp.html)、[工程构建系统](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32/api-guides/build-system.html)。
+
+## Linux / WSL 编译
+
+需要 Git、Python >= 3.9（含 venv）、Ninja，以及官方 Linux 依赖。
+setup.sh 会额外安装 SDK 推荐的 CMake 3.30.2，避免 Ubuntu 20.04 自带 CMake 3.16 导致蓝牙库链接路径错误：
+
+```bash
+sudo apt-get update
+sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+# Ubuntu 20.04 默认 Python 3.8，还需要并行安装受支持的版本：
+sudo apt-get install python3.9 python3.9-venv
+bash tools/setup.sh
+bash tools/build.sh
+bash tools/build.sh menuconfig
+bash tools/build.sh size
+# 有设备且确认串口后：
+bash tools/build.sh -p /dev/ttyUSB0 flash monitor
+```
+
+Linux 默认安装 SDK 到 `~/esp/esp-idf-v5.5.6`，工具链与 Python 环境放在
+`~/.espressif`，构建缓存放在当前工程的 `build/linux`；WSL 下全部位于 Linux 文件系统。
+Windows 继续使用原有 PowerShell 脚本及 E 盘上的 `idf-tools` 与 `build`，两端不共用 SDK、工具或构建缓存。
+sdkconfig 是工程配置，两端共享；SDK 版本仍由 sdk.lock.json 校验。
+安装脚本不会替换已有的不同版本 SDK，也不会修改系统默认 Python。
+脚本使用官方 install.sh/export.sh；首次安装需要联网下载 Linux 工具与 Python 包。
+
+非 WSL 或自定义目录时，设置 `SDK_PATH`、`IDF_TOOLS_PATH`；构建目录通过 `BUILD_PATH` 指定，例如：
+
+```bash
+export SDK_PATH=/path/to/esp-idf-v5.5.6
+export IDF_TOOLS_PATH=/path/to/idf-tools-linux
+export BUILD_PATH=/path/to/build-linux
+bash tools/setup.sh
+bash tools/build.sh
+```
+
+`.gitattributes` 固定 shell 脚本使用 LF 换行，以兼容 Windows Git 检出。
