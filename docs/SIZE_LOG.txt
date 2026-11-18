@@ -1,93 +1,60 @@
+SDK version OK: v5.5.6
+Checking "python3" ...
+Checking "python" ...
+Checking "python3.9" ...
+Python 3.9.5
+"python3.9" has been detected
 Activating ESP-IDF 5.5
-Setting IDF_PATH to 'E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6'.
-* Checking python version ... 3.12.4
+Setting IDF_PATH to '/home/ax2869/esp32-speaker/sdk/esp-idf'.
+* Checking python version ... 3.9.5
 * Checking python dependencies ... OK
 * Deactivating the current ESP-IDF environment (if any) ... OK
 * Establishing a new ESP-IDF environment ... OK
-* Identifying shell ... pwsh.exe
+* Identifying shell ... bash
 * Detecting outdated tools in system ... OK - no outdated tools found
+* Shell completion ... Autocompletion code generated
 
 Done! You can now compile ESP-IDF projects.
 Go to the project directory and run:
 
   idf.py build
-
 Executing action: size
-Running ninja in directory E:\Codex\work\esp32-speaker-foundation\build
+Running ninja in directory /home/ax2869/esp32-speaker/build/linux
 Executing "ninja all"...
-[1/4] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build\esp-idf\esptool_py && E:\Codex\work\esp32-speaker-foundation\idf-tools\python_env\idf5.5_py3.12_env\Scripts\python.exe E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/components/partition_table/check_sizes.py --offset 0x8000 partition --type app E:/Codex/work/esp32-speaker-foundation/build/partition_table/partition-table.bin E:/Codex/work/esp32-speaker-foundation/build/esp32_speaker_foundation.bin"
-
-esp32_speaker_foundation.bin binary size 0xe4b90 bytes. Smallest app partition is 0x300000 bytes. 0x21b470 bytes (70%) free.
-
-
+[1/4] cd /home/ax2869/esp32-speaker/build/linux/esp-idf/esptool_py && /home/ax2869/.espressif/python_env/idf5.5_py3.9_env/bin/python /home/ax2869/esp32-speaker/sdk/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/ax2869/esp32-speaker/build/linux/partition_table/partition-table.bin /home/ax2869/esp32-speaker/build/linux/esp32_speaker_foundation.bin
+esp32_speaker_foundation.bin binary size 0xe4df0 bytes. Smallest app partition is 0x300000 bytes. 0x21b210 bytes (70%) free.
 [2/4] Performing build step for 'bootloader'
-
-[1/1] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build\bootloader\esp-idf\esptool_py && E:\Codex\work\esp32-speaker-foundation\idf-tools\python_env\idf5.5_py3.12_env\Scripts\python.exe E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 E:/Codex/work/esp32-speaker-foundation/build/bootloader/bootloader.bin"
-
-
+[1/1] cd /home/ax2869/esp32-speaker/build/linux/bootloader/esp-idf/esptool_py && /home/ax2869/.espressif/python_env/idf5.5_py3.9_env/bin/python /home/ax2869/esp32-speaker/sdk/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /home/ax2869/esp32-speaker/build/linux/bootloader/bootloader.bin
 Bootloader binary size 0x6590 bytes. 0xa70 bytes (9%) free.
-
-
-
 [3/4] No install step for 'bootloader'
-
 [4/4] Completed 'bootloader'
-
-Running ninja in directory E:\Codex\work\esp32-speaker-foundation\build
+Running ninja in directory /home/ax2869/esp32-speaker/build/linux
 Executing "ninja size"...
-[0/1] C:\WINDOWS\system32\cmd.exe /C "cd /D E:\Codex\work\esp32-speaker-foundation\build && E:\Codex\work\esp32-speaker-foundation\idf-tools\tools\cmake\3.30.2\bin\cmake.exe -D IDF_SIZE_TOOL=E:/Codex/work/esp32-speaker-foundation/idf-tools/python_env/idf5.5_py3.12_env/Scripts/python.exe;-m;esp_idf_size -D MAP_FILE=E:/Codex/work/esp32-speaker-foundation/build/esp32_speaker_foundation.map -D OUTPUT_JSON= -P E:/Codex/work/esp32-speaker-foundation/esp-idf-v5.5.6/tools/cmake/run_size_tool.cmake"
-
-                           Memory Type Usage Summary                            
-
-+------------------------------------------------------------------------------+
-
-| Memory            |              |          |                |               |
-
-| Type/Section      | Used [bytes] | Used [%] | Remain [bytes] | Total [bytes] |
-
-|-------------------+--------------+----------+----------------+---------------|
-
-| Flash Code        |       646088 |          |                |               |
-
-|    .text          |       646088 |          |                |               |
-
-| Flash Data        |       181308 |          |                |               |
-
-|    .rodata        |       181052 |          |                |               |
-
-|    .appdesc       |          256 |          |                |               |
-
-| IRAM              |        89871 |    68.57 |          41201 |        131072 |
-
-|    .text          |        88843 |    67.78 |                |               |
-
-|    .vectors       |         1028 |     0.78 |                |               |
-
-| DRAM              |        62444 |    50.12 |          62136 |        124580 |
-
-|    .bss           |        43008 |    34.52 |                |               |
-
-|    .data          |        19436 |     15.6 |                |               |
-
-| RTC SLOW          |           56 |     0.68 |           8136 |          8192 |
-
-|    .force_slow    |           32 |     0.39 |                |               |
-
-|    .rtc_slow_rese |           24 |     0.29 |                |               |
-
-| rved              |              |          |                |               |
-
-+------------------------------------------------------------------------------+
-
-Total image size: 936735 bytes (.bin may be padded larger)
-
-Note: The reported total sizes may be smaller than those in the technical 
-
+[0/1] cd /home/ax2869/esp32-speaker/build/linux && /home/ax2869/.espressif/tools/cmake/3.30.2/bin/cmake -D "IDF_SIZE_TOOL=/home/ax2869/.espressif/python_env/idf5.5_py3.9_env/bin/python;-m;esp_idf_size" -D MAP_FILE=/home/ax2869/esp32-speaker/build/linux/esp32_speaker_foundation.map -D OUTPUT_JSON= -P /home/ax2869/esp32-speaker/sdk/esp-idf/tools/cmake/run_size_tool.cmake
+                           Memory Type Usage Summary
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Memory            ┃              ┃          ┃                ┃               ┃
+┃ Type/Section      ┃ Used [bytes] ┃ Used [%] ┃ Remain [bytes] ┃ Total [bytes] ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ Flash Code        │       646688 │          │                │               │
+│    .text          │       646688 │          │                │               │
+│ Flash Data        │       181316 │          │                │               │
+│    .rodata        │       181060 │          │                │               │
+│    .appdesc       │          256 │          │                │               │
+│ IRAM              │        89871 │    68.57 │          41201 │        131072 │
+│    .text          │        88843 │    67.78 │                │               │
+│    .vectors       │         1028 │     0.78 │                │               │
+│ DRAM              │        62436 │    50.12 │          62144 │        124580 │
+│    .bss           │        43000 │    34.52 │                │               │
+│    .data          │        19436 │     15.6 │                │               │
+│ RTC SLOW          │           56 │     0.68 │           8136 │          8192 │
+│    .force_slow    │           32 │     0.39 │                │               │
+│    .rtc_slow_rese │           24 │     0.29 │                │               │
+│ rved              │              │          │                │               │
+└───────────────────┴──────────────┴──────────┴────────────────┴───────────────┘
+Total image size: 937343 bytes (.bin may be padded larger)
+Note: The reported total sizes may be smaller than those in the technical
 reference manual due to reserved memory and application configuration. The total
-
-flash size available for the application is not included by default, as it 
-
-cannot be reliably determined due to the presence of other data like the 
-
+flash size available for the application is not included by default, as it
+cannot be reliably determined due to the presence of other data like the
 bootloader, partition table, and application partition size.
-

@@ -1,1 +1,3 @@
-Markdown: C:/Users/RSR/Desktop/doc/ESP32_Speaker_Foundation_{README,HANDOFF,HARDWARE,BUILD}.md
+Current Markdown: C:/Users/RSR/Desktop/doc/ESP32_Speaker_Framework_{README,BUILD,HANDOFF,HARDWARE,VALIDATION}.md
+Portable copies: README.txt and docs/*.txt in this repository.
+ESP32_Speaker_Foundation_* documents describe the earlier layout and are retained as history.

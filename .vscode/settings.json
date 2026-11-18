@@ -1,0 +1,13 @@
+{
+    "search.exclude": {
+        "build/**": true,
+        "sdk/esp-idf/**": true
+    },
+    "files.watcherExclude": {
+        "**/build/**": true
+    },
+    "files.associations": {
+        "speaker_service.h": "c",
+        "*.inc": "c"
+    }
+}

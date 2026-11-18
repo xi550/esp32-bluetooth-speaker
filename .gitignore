@@ -2,3 +2,6 @@ build/
 sdkconfig
 sdkconfig.old
 managed_components/
+!/sdk/esp-idf/**
+__pycache__/
+*.pyc

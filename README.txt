@@ -1,90 +1,108 @@
-# ESP32 蓝牙音箱基础框架
+# ESP32 蓝牙音箱 SDK 工程
 
-工程：`E:\Codex\outputs\esp32-speaker-foundation`。本次新建独立目录，没有覆盖已有工程。
+整个目录是个人仓库。官方 ESP-IDF v5.5.6 源码及递归依赖已作为普通文件纳入 sdk/esp-idf，
+无需再克隆另一个 SDK 仓库。目标固定为经典 ESP32-WROOM-32E/32D，使用 Classic Bluetooth/A2DP Sink。
 
-目标是 ESP32-WROOM-32E/32D，构建目标为 `esp32`，使用 Bluedroid Classic Bluetooth/A2DP Sink。不能改成 ESP32-S3/C3；这两个系列不满足本项目的经典蓝牙要求。实际模组型号仍需查看板上丝印确认。
+## 开发入口
 
-## SDK 与兼容性
-
-- 官方仓库：https://github.com/espressif/esp-idf
-- 固定稳定版本：v5.5.6；commit `880a203ae603d08a94d06aa01e0d6761958e5e9e`。
-- SDK：`E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6`。
-- 官方参考：同一 tag 下的 `examples/bluetooth/bluedroid/classic_bt/a2dp_sink_stream`，尤其是 main/main.c、common/bredr_app_common_utils 与 common/a2dp_utils/a2dp_sink_int_codec_utils。
-- 参考该版本官方初始化顺序与内部 SBC 解码模式，工程直接依赖官方 `bt`、`esp_driver_i2s`、`esp_lcd` 等组件；没有复制整个带业务行为的演示工程。
-- 当前使用 `esp_a2d_sink_register_data_callback()`：接收内部解码后的 PCM。该接口在 5.5.6 的 legacy 头中，仍被该版本官方内部解码示例使用。它已标记为未来移除，因此升级 IDF 必须重新评估。
-- 新的 `esp_a2d_sink_register_audio_data_callback()` 接收未解码音频，不能直接接到本项目 PCM/I2S 输出。当前明确关闭外部解码器配置。
-- `sdk.lock.json` 记录版本；构建脚本核对 commit，工程 CMake 核对版本和目标。
-
-## 目录与职责
+日常产品开发集中到：
+`sdk/apps/esp_app/board/ESP32/board_esp32_speaker/`
 
 ```text
-esp32-speaker-foundation/
-  CMakeLists.txt              工程入口、目标与版本检查
-  sdkconfig.defaults         Classic BT/A2DP、4MB Flash 默认值
-  partitions.csv             NVS/PHY/3MB factory；无 OTA
-  sdk.lock.json              SDK 来源与 commit
-  components/
-    board/include/board_pins.h 单一引脚定义源
-    speaker_drivers/          I2S 输出、ST7789 flush、原始按键
-    speaker_bsp/              驱动启动编排
-    speaker_service/          A2DP 接收、PCM 队列、音频工作任务
-  main/
-    app_main.c               启动入口及应用接入位置
-    app_ui.c                 空白学习任务
-    app_controls.c           空白学习任务
-  tools/                     setup.ps1、build.ps1；Linux 使用 setup.sh、build.sh
-  DOCUMENTATION.txt          外置 Markdown 文档位置
+sdk/
+  esp-idf/                           官方 SDK 源码及完整依赖
+  esp-idf.snapshot.json               来源、依赖 commit、逐文件 SHA256
+  apps/esp_app/
+    CMakeLists.txt                   应用构建入口
+    device/                          I2S、ST7789、原始按键驱动
+    interface/                       蓝牙接收、PCM 队列、音频工作任务
+    board/ESP32/board_esp32_speaker/
+      CMakeLists.txt                 本产品的源码清单与依赖
+      board_esp_proj.c/.h            GPIO/I2S/LCD 初始化编排
+      board_esp_proj_cfg.h           单一引脚定义源
+      board_app.h                   产品应用入口声明
+      Kconfig.projbuild             LCD 参数、蓝牙名称等配置
+      sdkconfig.defaults            首次构建默认配置
+      partitions.csv                本产品分区表
+      task/board_main.c             app_main，启动顺序
+      system/board_app.c            app_start，产品状态与任务接入位置
+      keypad/board_keyevent.c       按键行为学习任务，当前为空
+      ui/board_ui.c                 绘图与页面学习任务，当前为空
+tools/                              Linux / Windows 安装、构建、校验
+build/linux/                        Linux 构建输出（不入库）
+build/windows/                      Windows 构建输出（不入库）
 ```
 
-`app → service/BSP → driver → board`；底层不依赖应用。按键和显示接口可由应用直接调用；禁止驱动回调里操作页面或处理曲目。
+参照杰理项目组织产品目录，继续使用 ESP-IDF 官方 CMake/Kconfig 构建机制。
+当前只有一个 board，作为一个原生 IDF 组件编译，公共驱动由该组件列入源码；没有额外的板型选择框架。
+新增本产品源文件时，在 board 的 CMakeLists.txt 中加入。新增硬件能力时可扩展 device/interface。
 
-基础数据路径：手机 SBC → 官方 Bluedroid 解码 → 借用 PCM 回调 → 复制到有界队列 → audio_tx 工作任务 → I2S Philips、16bit、双声道。队列满时丢弃当前回调剩余数据并记录溢出；回调不阻塞等待 I2S。采样率随 SBC 协商切换，连接代号用于丢弃旧队列数据。
+## 构建
 
-左右声道按原有交错立体声顺序发送，两块 MAX98357A 的 SD_MODE 硬件决定各自取哪个声道。软件不拆分或重排左右声道。当前单声道协商只记录不支持并丢弃音频，后续需单独评估，不能宣称支持所有音源格式。
-
-## 应用层边界
-
-已提供底层启动和真实音频接入点；默认广播名称为 ESP32-Speaker-Lab。没有实现音量缩放、AVRCP、曲目管理、播放控制、按键行为、UI 页面、字体、绘图器或业务状态机，也没有引入 LVGL 等 UI 框架。
-
-LCD 默认不初始化；尺寸、偏移、颜色反转可在 menuconfig 配置。按键仅提供原始电平。服务启动一次，失败由 app_main 终止启动；动态停止/销毁、重试恢复不是当前接口能力。
-
-Markdown 文档按用户约定集中存放在桌面 doc 目录：同名前缀的 BUILD、HANDOFF、HARDWARE，以及构建验收记录。工程根目录 README.txt 与 docs 下的文本副本用于便携交接。
-
-官方资料：[v5.5.6 发布说明](https://github.com/espressif/esp-idf/releases/tag/v5.5.6)、[该版本 A2DP API](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32/api-reference/bluetooth/esp_a2dp.html)、[工程构建系统](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32/api-guides/build-system.html)。
-
-## Linux / WSL 编译
-
-需要 Git、Python >= 3.9（含 venv）、Ninja，以及官方 Linux 依赖。
-setup.sh 会额外安装 SDK 推荐的 CMake 3.30.2，避免 Ubuntu 20.04 自带 CMake 3.16 导致蓝牙库链接路径错误：
+Linux / WSL（当前工程位于 /home/ax2869/esp32-speaker）：
 
 ```bash
-sudo apt-get update
-sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
-# Ubuntu 20.04 默认 Python 3.8，还需要并行安装受支持的版本：
-sudo apt-get install python3.9 python3.9-venv
-bash tools/setup.sh
+bash tools/setup.sh      # 首次安装或 SDK 路径改变后执行
 bash tools/build.sh
 bash tools/build.sh menuconfig
 bash tools/build.sh size
-# 有设备且确认串口后：
-bash tools/build.sh -p /dev/ttyUSB0 flash monitor
 ```
 
-Linux 默认安装 SDK 到 `~/esp/esp-idf-v5.5.6`，工具链与 Python 环境放在
-`~/.espressif`，构建缓存放在当前工程的 `build/linux`；WSL 下全部位于 Linux 文件系统。
-Windows 继续使用原有 PowerShell 脚本及 E 盘上的 `idf-tools` 与 `build`，两端不共用 SDK、工具或构建缓存。
-sdkconfig 是工程配置，两端共享；SDK 版本仍由 sdk.lock.json 校验。
-安装脚本不会替换已有的不同版本 SDK，也不会修改系统默认 Python。
-脚本使用官方 install.sh/export.sh；首次安装需要联网下载 Linux 工具与 Python 包。
+Windows PowerShell（本地 Windows 检出目录）：
 
-非 WSL 或自定义目录时，设置 `SDK_PATH`、`IDF_TOOLS_PATH`；构建目录通过 `BUILD_PATH` 指定，例如：
-
-```bash
-export SDK_PATH=/path/to/esp-idf-v5.5.6
-export IDF_TOOLS_PATH=/path/to/idf-tools-linux
-export BUILD_PATH=/path/to/build-linux
-bash tools/setup.sh
-bash tools/build.sh
+```powershell
+.\tools\setup.ps1
+.\tools\build.ps1
+.\tools\build.ps1 -Action menuconfig
 ```
 
-`.gitattributes` 固定 shell 脚本使用 LF 换行，以兼容 Windows Git 检出。
+源码共用，工具和缓存分开：Linux 工具默认 ~/.espressif；Windows 默认 %USERPROFILE%\.espressif。
+两端均可通过 IDF_TOOLS_PATH 指定工具位置，Windows 也支持 -ToolsPath。
+WSL 的 SDK、工具与构建输出全部在 Linux 文件系统。详见 docs/BUILD.txt。
+生成配置保存在 sdk/apps/esp_app/sdkconfig，Linux/Windows 共用同一份产品配置，请依次运行 menuconfig/构建。
+
+## SDK 版本与维护
+
+上游：https://github.com/espressif/esp-idf.git
+版本：v5.5.6；commit：880a203ae603d08a94d06aa01e0d6761958e5e9e。
+sdk.lock.json 记录上游版本；sdk/esp-idf.snapshot.json 记录导入的 27 个递归子模块及全部文件哈希。
+安装入口使用tools/check_sdk.py 校验全部源码，构建入口校验锁定版本与来源信息，不再把个人仓库 HEAD 当成官方 SDK commit。
+
+导入保留上游源码和许可证；去掉嵌套 .git、.gitignore、.gitattributes、.gitmodules。
+16 个上游文件符号链接已展开为目标文件内容，便于 Windows 普通 Git 检出。
+新增 version.txt 固定官方版本标识，避免 IDF 把个人仓库版本写成 SDK 版本。
+顶层 .gitattributes 保持 SDK 文件原始字节，不做换行转换。
+升级时应重新核对上游版本、递归依赖与导入清单，并重新验证音频 API；不要仅修改哈希来绕过检查。
+
+## 功能与边界
+
+数据路径保持：手机 SBC → 官方 Bluedroid 内部解码 → 借用 PCM 回调 → 复制到有界队列 → 音频任务 → I2S。
+回调不阻塞等待 I2S；队列满时丢弃剩余数据。采样率随协商切换，连接代号用于丢弃旧队列数据。
+交错 PCM16 立体声保持原样，两块 MAX98357A 通过硬件 SD_MODE 选择左右声道。
+当前不支持单声道协商；LCD 默认不初始化，尺寸和偏移等仍需实物确认。
+
+保留内部解码 PCM 的 legacy API esp_a2d_sink_register_data_callback；升级 SDK 需要重新评估。
+不改用 ESP32-S3/C3，不改蓝牙音频协议、引脚、队列大小或硬件参数。
+UI、按键消抖与动作、音量、AVRCP、产品事件模型和状态机仍是待开发任务。
+编译通过不代表配对、实际播放、显示、按键及长时间运行通过实板验收。
+详见 docs/HANDOFF.txt、docs/HARDWARE.txt 和 docs/VALIDATION.txt。
+
+## VS Code 一键编译与烧录
+
+打开仓库根目录，首次先执行本平台的 tools/setup.sh 或 tools/setup.ps1 安装工具链。
+C/C++ 扩展（ms-vscode.cpptools）安装在当前开发环境；WSL 使用 VS Code 的 WSL 扩展打开工程。
+Ctrl+Shift+B 默认执行 build + flash：先编译，成功后检查串口；未连接时提示跳过烧录并正常返回。
+串口存在时通过 esptool 烧录，并按默认配置复位运行；编译错误或实际烧录失败仍返回失败。
+任务在 Windows 调用 PowerShell，在 Linux/WSL 调用 Bash，不需要额外烧录上位机。
+需要仅编译时，通过“任务：运行任务”选择 build only；命令行 build.sh / build.ps1 的默认动作仍为仅编译。
+
+默认串口由官方 ESP-IDF/esptool 自动探测。连接多个设备时，在启动 VS Code 的环境中设置 ESPPORT，
+例如 Windows 为 COM5、Linux 为 /dev/ttyUSB0；重启 VS Code 使任务继承更新后的环境。
+串口必须可访问：Windows 需对应 USB 串口驱动；Linux 需串口权限；WSL2 需先将 USB 串口设备接入 WSL。
+板卡需要自动下载/复位电路才能全程一键执行；没有该电路时仍需手动配合 BOOT/EN。
+任务不执行整片擦除，不启动串口监视器。实板烧录需实际连接设备后验证。
+
+.vscode/c_cpp_properties.json 按 Linux/Win32 自动选择对应平台的 compile_commands.json，
+沿用真实编译命令的宏、头文件路径和编译器。首次先编译一次以生成编译数据库和 sdkconfig.h。
+.vscode/settings.json 不参与固件构建：默认搜索跳过 build 和官方 SDK，文件监听跳过 build。
+SDK 仍在文件树中可见；需要搜索 SDK 时可取消搜索面板的“使用排除设置和忽略文件”。

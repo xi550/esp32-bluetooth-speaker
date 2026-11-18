@@ -1,0 +1,46 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build + flash",
+            "type": "process",
+            "command": "bash",
+            "args": ["${workspaceFolder}/tools/build.sh", "build", "flash"],
+            "windows": {
+                "command": "powershell.exe",
+                "args": [
+                    "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", "${workspaceFolder}\\tools\\build.ps1",
+                    "-Action", "build+flash"
+                ]
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "build only",
+            "type": "process",
+            "command": "bash",
+            "args": ["${workspaceFolder}/tools/build.sh", "build"],
+            "windows": {
+                "command": "powershell.exe",
+                "args": [
+                    "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", "${workspaceFolder}\\tools\\build.ps1",
+                    "-Action", "build"
+                ]
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": "build"
+        }
+    ]
+}

@@ -1,0 +1,30 @@
+menu "Speaker hardware"
+config SPEAKER_LCD_ENABLE
+ bool "Initialize ST7789 (confirm geometry and wiring first)"
+ default n
+config SPEAKER_LCD_WIDTH
+ int "LCD width"
+ range 1 320
+ default 240
+config SPEAKER_LCD_HEIGHT
+ int "LCD height"
+ range 1 320
+ default 240
+config SPEAKER_LCD_X_GAP
+ int "Column offset"
+ range 0 320
+ default 0
+config SPEAKER_LCD_Y_GAP
+ int "Row offset"
+ range 0 320
+ default 0
+config SPEAKER_LCD_INVERT
+ bool "Invert panel colors"
+ default n
+endmenu
+
+menu "Speaker service"
+config SPEAKER_BT_NAME
+ string "Bluetooth name"
+ default "ESP32-Speaker-Lab"
+endmenu

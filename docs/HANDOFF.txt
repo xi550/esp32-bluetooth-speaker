@@ -1,13 +1,13 @@
 # 实习生开发交接
 
-配套工程：`E:\Codex\outputs\esp32-speaker-foundation`。
+配套工程：个人 esp32-speaker 仓库；产品目录：`sdk/apps/esp_app/board/ESP32/board_esp32_speaker`。
 
 ## 接手顺序与验收
 
 1. 阅读 README、引脚定义、HARDWARE；能解释 SBC、PCM、I2S 三者区别，完成工具安装并独立构建。
 2. 核实模组为经典 ESP32、Flash 容量和硬件接线。先完成默认固件启动，确认日志无初始化失败；手机可发现并配对。
 3. 用立体声测试音源验证音频、44.1/48kHz 切换、两块功放左右声道选择及断连重连。记录协商格式、队列溢出、堆和任务栈余量。不得以编译通过替代硬件验收。
-4. 在 app_controls.c 自行实现按键轮询、消抖、边沿事件及长短按判定。先只打印事件，五个键无连发、无漏报，再与业务关联。
+4. 在 keypad/board_keyevent.c 自行实现按键轮询、消抖、边沿事件及长短按判定。先只打印事件，五个键无连发、无漏报，再与业务关联。
 5. 自行实现应用状态与消息分发，定义音量/播放/连接等模型。学习 AVRCP CT/TG 的区别，再实现并验证播放暂停、上一首、下一首；A2DP media control API 不等于音乐播放器的 AVRCP 控制。
 6. 设计音量方案，包括数字 PCM 缩放、削波和手机绝对音量同步；自己实现。禁止通过丢弃某一声道或改 SD_MODE 引脚实现音量。
 7. 确认 LCD 参数后启用，使用 lcd_hal_flush 自行实现像素、矩形、字体、页面、脏区刷新。先做单色/色条诊断，再设计产品 UI。禁止导入现成 UI 页面替代学习任务。
@@ -17,8 +17,8 @@
 
 |接口|约定|
 |---|---|
-|app_start|main/app.h 声明的应用入口，在 BSP/服务初始化后调用一次；当前为空，供实习生创建应用状态及任务|
-|speaker_bsp_init|启动 GPIO/I2S；按配置启动 LCD，失败终止启动|
+|app_start|board_app.h 声明的应用入口，在 BSP/服务初始化后调用一次；当前为空，供实习生创建应用状态及任务|
+|board_init|启动 GPIO/I2S；按配置启动 LCD，失败终止启动|
 |speaker_service_start|BSP 后调用一次；创建音频任务与经典蓝牙接收服务|
 |buttons_read(index, &pressed)|0..4 对应 GPIO13/14/27/32/33；原始低有效值，无消抖|
 |lcd_hal_flush(x0,y0,x1,y1,pixels)|坐标右下端点不包含；RGB565 高字节在前；单 UI 任务；阻塞到传输完成|
@@ -31,3 +31,5 @@
 ## 指导者负责的硬件前置条件
 
 确认引脚、供电、功放 SD_MODE/GAIN、扬声器、LCD 尺寸及背光接法；提供实物测试条件。确认无误后再交给实习生做页面与业务。版本升级、底层音频格式变更需评审；普通应用开发保持现有 board pin map 和服务分层。
+
+本次目录迁移：产品初始化在 board_esp_proj.c，应用启动在 task/board_main.c，产品状态/任务接入在 system/board_app.c，UI 接入在 ui/board_ui.c。新增产品源码加入该 board 的 CMakeLists.txt。device/interface 提供已有公共能力，保持 PCM 回调与音频任务的内存和所有权约定。

@@ -1,52 +1,122 @@
 # 构建、烧录与环境复现
 
-工程：`E:\Codex\outputs\esp32-speaker-foundation`。SDK 与工具位于 `E:\Codex\work\esp32-speaker-foundation`，不安装到用户主目录。
+从个人仓库根目录执行 tools 下的脚本。应用工程入口已迁至 sdk/apps/esp_app，
+官方 SDK 已完整纳入 sdk/esp-idf，不再依赖 ~/esp 或 E 盘上另一个 SDK 源码仓库。
 
-## 已有环境
+## Linux / WSL
 
-在 PowerShell 中运行：
+需要 Git、Python >= 3.9（含对应 venv）、Ninja 和官方依赖：
+
+```bash
+sudo apt-get update
+sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+# Ubuntu 20.04 的默认 Python 3.8 不满足要求，需并行安装：
+sudo apt-get install python3.9 python3.9-venv
+cd /home/ax2869/esp32-speaker
+bash tools/setup.sh
+bash tools/build.sh
+bash tools/build.sh menuconfig
+bash tools/build.sh size
+```
+
+setup.sh 校验内置 SDK，安装 SDK 推荐的 CMake 3.30.2、ESP32 工具链及隔离 Python 环境。
+Ubuntu 20.04 的系统 CMake 3.16 无法正确处理此 SDK 的蓝牙库路径，构建使用已安装的官方推荐版本。
+工具默认 ~/.espressif，构建输出默认 <仓库>/build/linux。
+首次安装需联网获取编译器与 Python 依赖，SDK 源码不再另外下载。
+SDK 路径发生变化后先运行 setup.sh，让官方工具登记该路径对应的 esp32 目标。
+BUILD_PATH 可覆盖构建目录，IDF_TOOLS_PATH 可覆盖工具目录；迁移构建目录后使用新的空目录。
+SDK_PATH 可指定同一导入快照的副本；它仍必须通过整个快照校验。
+
+## Windows
+
+准备 Git、Python >= 3.9；在本地 Windows 检出目录运行：
 
 ```powershell
-Set-Location E:\Codex\outputs\esp32-speaker-foundation
+.\tools\setup.ps1
 .\tools\build.ps1
 .\tools\build.ps1 -Action menuconfig
 .\tools\build.ps1 -Action size
 ```
 
-每次脚本核对 SDK commit 并激活官方 ESP-IDF 环境，构建目录为 `E:\Codex\work\esp32-speaker-foundation\build`。修改 LCD 配置后需要重新构建。sdkconfig.defaults 仅为首次生成配置的默认值，之后 menuconfig 保存的 sdkconfig 优先。
-
-## 新电脑安装
-
-先准备 Git、受该 IDF 支持的 Python（本次使用 Python 3.12），再运行 `tools\setup.ps1`。脚本拉取 v5.5.6 与对应子模块，安装 esp32 交叉工具链及隔离 Python 环境。网络中断后核对日志，再重试；不要把子模块不完整误判为工程源码错误。
-
-也可按官方步骤手动安装：
-
-若 GitHub 子模块下载持续失败，可从上述官方发布页下载包含 `.git` 和全部子模块的完整 `esp-idf-v5.5.6.zip`（不是自动生成的 Source code 包），解压到脚本指定的 SDK 目录。本次已使用此方式补齐依赖；原先不完整的克隆保留在 `E:\Codex\work\esp32-speaker-foundation\git-clone-incomplete`，供排查，不用于构建。完整发布包保存在同一 work 目录，下载文件的 SHA256 记录在工程 `sdk-archive-sha256.json`。
+工具默认使用 %USERPROFILE%\.espressif；优先使用环境变量 IDF_TOOLS_PATH。
+自定义工具目录时，setup.ps1/build.ps1 传入相同的 -ToolsPath，例如：
 
 ```powershell
-git clone --branch v5.5.6 --depth 1 --recursive --shallow-submodules https://github.com/espressif/esp-idf.git E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6
-$env:IDF_TOOLS_PATH='E:\Codex\work\esp32-speaker-foundation\idf-tools'
-$sdk='E:\Codex\work\esp32-speaker-foundation\esp-idf-v5.5.6'
-python "$sdk\tools\idf_tools.py" install --targets=esp32
-python "$sdk\tools\idf_tools.py" install-python-env
-. "$sdk\export.ps1"
-Set-Location E:\Codex\outputs\esp32-speaker-foundation
-idf.py -B E:\Codex\work\esp32-speaker-foundation\build build
+.\tools\setup.ps1 -ToolsPath "$env:USERPROFILE\.espressif"
+.\tools\build.ps1 -ToolsPath "$env:USERPROFILE\.espressif"
 ```
 
-工程固定 `esp32`，无需切换为其他目标。全新通用 ESP-IDF 工程的标准命令是 `idf.py set-target esp32`；它会重置配置，现有工程有自定义配置时应先备份。
+构建输出默认 <仓库>\build\windows，可通过 -BuildPath 覆盖。
+-SdkPath 可指定同一 SDK 快照副本。源码导入包含较深的第三方路径，克隆时可使用
+`git -c core.longpaths=true clone <个人仓库地址>`，检出后在该仓库配置 core.longpaths=true。
+建议 Windows 使用本地检出，WSL 使用 Linux 内部检出并通过 VS Code WSL 扩展开发。
+若确实用 Windows 原生工具链编译 WSL 中的源码，必须用 -BuildPath 指定 Windows 本地输出目录；
+仅 pushd 映射盘符不够，Python 会将路径还原为 UNC，而 CMD/Ninja 不支持 UNC 作为当前目录。
+
+## 配置与接口
+
+产品目录：sdk/apps/esp_app/board/ESP32/board_esp32_speaker。
+引脚在 board_esp_proj_cfg.h，LCD/蓝牙选项在 Kconfig.projbuild，分区表在 partitions.csv。
+sdkconfig.defaults 只提供首次默认值；已有配置 sdk/apps/esp_app/sdkconfig 优先。
+分区表路径为相对应用工程的 board/ESP32/board_esp32_speaker/partitions.csv。
+工具与构建缓存不可跨平台混用；不要让两个平台同时改写同一份 sdkconfig。
+
+SDK 校验和轻量检查：
+
+```bash
+python3 tools/check_sdk.py
+python3 tools/test_sdk_snapshot.py
+```
+
+安装入口和手动 check_sdk.py 覆盖所有导入文件的 SHA256，包括递归依赖中的预编译库；修改或缺失时校验终止。
+日常构建仅核对锁定版本与快照来源信息，避免在 WSL 共享路径重复扫描全部 SDK；需要检查 SDK 文件完整性时运行上述完整校验。
+不需要、也不应在 sdk/esp-idf 下执行 git submodule update。
 
 ## 烧录与串口
 
-确认硬件、电源及电脑串口号后，用户自行执行，例如将 COM5 换成实际端口：
+确认硬件、电源及实际串口后自行执行：
+
+```bash
+bash tools/build.sh -p /dev/ttyUSB0 flash monitor
+```
 
 ```powershell
 .\tools\build.ps1 -Action flash -Port COM5
 .\tools\build.ps1 -Action monitor -Port COM5
 ```
 
-`Ctrl+]` 退出串口监视。本次任务不自动擦除或烧录设备。固件遇到 NVS 无空间或版本不匹配会报错终止，不自动擦除用户数据。确需清空时先确认数据不需要保留，再由用户执行官方 erase-flash 维护命令。
+Ctrl+] 退出监视。默认 4MB Flash、3MB factory、DIO/40MHz，无 OTA。
+本次重构不自动烧录或擦除设备；NVS 异常仍报错终止，不自动清除用户数据。
+根目录 firmware 保留重构前交付物；本次构建的最新文件位于对应 build 目录，以 docs/VALIDATION.txt 为准。
 
-默认假设 4MB Flash、UART 下载，无 OTA。配对后可测试 SBC 双声道音频；手机音量不保证受框架控制，因为 AVRCP 和应用音量尚未实现。
+## VS Code 一键编译与烧录
 
-官方说明：[获取 v5.5.6](https://github.com/espressif/esp-idf/releases/tag/v5.5.6)、[ESP32 入门](https://docs.espressif.com/projects/esp-idf/en/v5.5.6/esp32/get-started/index.html)。构建实测结果另见验收记录，不能由本说明推断硬件已通过。
+打开仓库根目录，首次运行对应平台的 setup 脚本。WSL 通过 VS Code WSL 扩展打开目录。
+Ctrl+Shift+B 默认运行 build + flash：Linux/WSL 调用 bash tools/build.sh build flash，
+Windows 调用 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1 -Action build+flash。
+显式先 build 再 flash，构建失败时不会执行烧录。编译成功后枚举串口；没有串口或指定的串口未连接时，
+提示跳过烧录并返回成功，不影响普通编译。串口存在时仍由官方工具探测设备并下载；实际连接/烧录失败继续报错。
+Windows/Linux 共用 tools/run_idf.py 中的这一判断，不需要额外 GUI 上位机。
+单独执行 flash 仍保留官方失败行为；自动跳过只用于任务的 build + flash 组合。
+需要仅编译时，通过“任务：运行任务”选择 build only。
+
+默认由官方工具自动探测串口；有多个目标时可在启动 VS Code 的环境中设置 ESPPORT，重启 VS Code 后生效。
+也可以直接执行指定串口的脚本命令：
+
+```bash
+bash tools/build.sh -p /dev/ttyUSB0 build flash
+```
+
+```powershell
+.\tools\build.ps1 -Port COM5 -Action build+flash
+```
+
+Windows 需 USB 串口驱动；Linux 用户需串口访问权限；WSL2 需先把 USB 串口设备接入 WSL。
+无自动下载电路的板卡仍需要手动配合 BOOT/EN，脚本无法代替物理接线。
+默认不执行 erase-flash，不清空 NVS，不启动 monitor；只更新当前分区配置中的固件内容。
+
+补全配置使用 Linux/Win32 两个自动选择的配置，分别读取 build/linux 或 build/windows 的 compile_commands.json。
+首次使用先编译一次；如自定义构建输出目录，还需对应调整 compileCommands 路径。
+settings.json 只调整搜索与文件监听，不改变编译参数，不关闭错误诊断。
+
+无设备逻辑回归检查（激活 ESP-IDF 环境后执行）：`python tools/test_run_idf.py`。
