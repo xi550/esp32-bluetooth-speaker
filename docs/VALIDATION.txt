@@ -26,10 +26,10 @@
 待后续统一检查：
 - Windows 原生构建按用户要求暂停，本记录不声称已兼容性验收通过。
 - 未连接或烧录实板；配对、音频、LCD、按键和压力测试均未验收。
-- UI、按键消抖、音量、AVRCP、产品状态机仍为学习接入任务。
+- UI、按键消抖与功能映射、应用任务分发仍为学习接入任务。连接/播放/音量状态、AVRCP CT/TG 和 PCM 音量已由框架封装；硬件验收仍待执行。
 
 产物：最新固件位于 build/linux（不入库），根目录 firmware 是重构前的历史交付物。
-以下为本轮 WSL 构建的文件与 SHA256：
+以下为 2026-11-18 框架迁移构建的历史文件与 SHA256（不是当前固件）：
 
 {
   "esp32_speaker_foundation.bin": {
@@ -50,3 +50,29 @@
 
 无串口处理修复：build + flash 在编译成功后检查串口；无端口时跳过并返回 0。WSL 无串口真实构建通过。
 回归覆盖无端口、指定端口缺失、ESPPORT 缺失、编译失败、烧录成功/失败与显式 flash；Windows 未重新实编。
+
+
+## 2026-11-19：蓝牙状态、AVRCP 与音量接口
+
+本轮完成 T05 的服务状态管理，以及 T06 的 AVRCP CT/TG、PCM 音量和双向绝对音量同步软件实现。
+实习生只需调用 speaker_service.h；按键扫描/映射、应用任务分发及 UI 仍待接入。
+回调只更新状态和请求标记，协议发送集中到服务任务，状态邮箱长度为 1，保留最新快照。
+播放命令有按下/释放配对、响应拒绝/超时结果和断连取消；音量初始值可配置，默认 40/127。
+
+已执行并通过：
+- bash tools/build.sh reconfigure build：新增 Kconfig 生效，WSL 完整构建通过。
+- bash tools/build.sh build：最终版本增量构建通过，应用/bootloader/分区表生成且容量检查通过。
+- python3 tools/test_speaker_service.py：真实服务代码搭配假 RTOS/传输；覆盖连接与重复事件、暂停/重连、PCM 复制/格式/溢出、AVRCP 按下释放/拒绝/超时/跨连接取消、状态查询重试、TG 音量订阅/无回环/失败重试。
+- PCM 缩放穷举全部 65536 个 PCM16 输入、全部 128 档音量及双声道一致性，共 8388608 组输入。
+- ESP-IDF 虚拟环境 Python 执行 tools/test_run_idf.py、tools/test_sdk_snapshot.py：通过。
+- python3 tools/check_sdk.py：v5.5.6 全部 28065 文件完整性通过。
+- git diff --check：通过。
+
+当前应用固件：build/linux/esp32_speaker_foundation.bin，940976 字节。
+SHA256：b7cd7d7c45d4e151f264400a4ed37478b674ff630fbf15b36ce86a8a6d1d7f9d。
+构建日志：E:\Codex\work\esp32-speaker-service-build.log。
+
+未验证：Windows 原生编译、实板烧录、手机 AVRCP/绝对音量兼容性及长时间播放。
+SDK 初始化成功和主机回归通过不等于手机接受播放命令或硬件联调通过。
+下一步先用手机验收连接/播放/音量/断连重连，再接按键和显示。
+未执行 Git 提交、推送或设备写入。原 .vscode/settings.json 修改保留。

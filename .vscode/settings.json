@@ -9,5 +9,6 @@
     "files.associations": {
         "speaker_service.h": "c",
         "*.inc": "c"
-    }
+    },
+    "cmake.sourceDirectory": "/home/ax2869/esp32-speaker/sdk/esp-idf"
 }

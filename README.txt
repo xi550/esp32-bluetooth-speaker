@@ -78,12 +78,16 @@ sdk.lock.json 记录上游版本；sdk/esp-idf.snapshot.json 记录导入的 27 
 
 数据路径保持：手机 SBC → 官方 Bluedroid 内部解码 → 借用 PCM 回调 → 复制到有界队列 → 音频任务 → I2S。
 回调不阻塞等待 I2S；队列满时丢弃剩余数据。采样率随协商切换，连接代号用于丢弃旧队列数据。
-交错 PCM16 立体声保持原样，两块 MAX98357A 通过硬件 SD_MODE 选择左右声道。
+交错 PCM16 立体声在音频任务内统一缩放音量，两块 MAX98357A 通过硬件 SD_MODE 选择左右声道。
 当前不支持单声道协商；LCD 默认不初始化，尺寸和偏移等仍需实物确认。
 
 保留内部解码 PCM 的 legacy API esp_a2d_sink_register_data_callback；升级 SDK 需要重新评估。
 不改用 ESP32-S3/C3，不改蓝牙音频协议、引脚、队列大小或硬件参数。
-UI、按键消抖与动作、音量、AVRCP、产品事件模型和状态机仍是待开发任务。
+框架维护连接、播放器、音频流与音量状态；speaker_service.h 提供查询、状态变化接收、
+播放/暂停/上一首/下一首及音量接口。AVRCP CT 控制手机，TG 接收/同步绝对音量，实习生不实现协议。
+UI、按键消抖与功能映射、应用任务分发仍待开发。接口用法见 docs/HANDOFF.txt。
+音量范围 0..127；0 静音，127 原幅度，初始值由 SPEAKER_INITIAL_VOLUME 配置，默认 40，不写 NVS。
+手机需支持并订阅 AVRCP 绝对音量通知，双向同步才生效；默认初始值不构成硬件最大音量限制。
 编译通过不代表配对、实际播放、显示、按键及长时间运行通过实板验收。
 详见 docs/HANDOFF.txt、docs/HARDWARE.txt 和 docs/VALIDATION.txt。
 

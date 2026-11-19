@@ -8,8 +8,8 @@
 2. 核实模组为经典 ESP32、Flash 容量和硬件接线。先完成默认固件启动，确认日志无初始化失败；手机可发现并配对。
 3. 用立体声测试音源验证音频、44.1/48kHz 切换、两块功放左右声道选择及断连重连。记录协商格式、队列溢出、堆和任务栈余量。不得以编译通过替代硬件验收。
 4. 在 keypad/board_keyevent.c 自行实现按键轮询、消抖、边沿事件及长短按判定。先只打印事件，五个键无连发、无漏报，再与业务关联。
-5. 自行实现应用状态与消息分发，定义音量/播放/连接等模型。学习 AVRCP CT/TG 的区别，再实现并验证播放暂停、上一首、下一首；A2DP media control API 不等于音乐播放器的 AVRCP 控制。
-6. 设计音量方案，包括数字 PCM 缩放、削波和手机绝对音量同步；自己实现。禁止通过丢弃某一声道或改 SD_MODE 引脚实现音量。
+5. 在 app_start 创建应用任务，用 speaker_service_get_state 查询，或由一个应用任务调用 speaker_service_wait_state 接收最新状态并分发给 UI。连接、播放和音量由框架维护，不解析日志，不重复实现蓝牙状态机。
+6. 按确认的产品映射调用 speaker_service_control 实现播放/暂停/上一首/下一首，调用 speaker_service_set_volume 设置音量。AVRCP CT/TG、PCM 数字缩放及手机绝对音量同步已在框架中封装，实习生只负责按键与页面接入和实物验收。
 7. 确认 LCD 参数后启用，使用 lcd_hal_flush 自行实现像素、矩形、字体、页面、脏区刷新。先做单色/色条诊断，再设计产品 UI。禁止导入现成 UI 页面替代学习任务。
 8. 联调与压力测试：连续播放至少 30 分钟、反复断连、暂停/恢复、快速按键及 LCD 刷新同时进行；记录音频中断、堆变化与最大栈用量。
 
@@ -17,16 +17,38 @@
 
 |接口|约定|
 |---|---|
-|app_start|board_app.h 声明的应用入口，在 BSP/服务初始化后调用一次；当前为空，供实习生创建应用状态及任务|
+|app_start|board_app.h 声明的应用入口，在 BSP/服务初始化后调用一次；当前为空，供实习生创建按键/UI/应用分发任务|
 |board_init|启动 GPIO/I2S；按配置启动 LCD，失败终止启动|
 |speaker_service_start|BSP 后调用一次；创建音频任务与经典蓝牙接收服务|
+|speaker_service_get_state(&state)|线程安全地复制连接、播放、流、采样率、音量及控制结果快照|
+|speaker_service_wait_state(&state, timeout_ms)|一个应用任务接收最新快照；0 轮询，UINT32_MAX 一直等待，超时返回 ESP_ERR_TIMEOUT|
+|speaker_service_control(control)|PLAY、PAUSE、PLAY_PAUSE、PREVIOUS、NEXT；非阻塞提交，同一时刻一个控制请求|
+|speaker_service_set_volume(volume)|0..127，0 静音，127 原幅度；初始值 SPEAKER_INITIAL_VOLUME 默认 40，不写 NVS|
 |buttons_read(index, &pressed)|0..4 对应 GPIO13/14/27/32/33；原始低有效值，无消抖|
 |lcd_hal_flush(x0,y0,x1,y1,pixels)|坐标右下端点不包含；RGB565 高字节在前；单 UI 任务；阻塞到传输完成|
 |audio_output_*|仅供音频工作任务所有，不允许 UI/按键任务并发调用|
 
-服务内 Bluetooth 回调应保持短小。回调 PCM 指针为 SDK 借用内存，只能在回调期间使用；现有服务已复制到队列。不要在回调里画屏、等待按键或执行 I2S 阻塞写入。未来向应用转发事件时，必须复制数据并明确队列所有权与溢出策略。
+服务内 Bluetooth 回调只更新状态及待处理标记；运行期协议发送在服务任务内完成，不持状态锁调用可能阻塞的 SDK。PCM 指针为 SDK 借用内存，只在回调期间有效，服务已复制到有界队列。不要在回调里画屏、等待按键或执行 I2S 阻塞写入。
 
-当前服务没有对外发布连接/播放状态事件，这是实习生应用状态机接入任务之一。需要由指导者评审状态事件接口后实现，不依赖日志解析。
+所有接口仅供任务上下文调用，不可从 ISR 调用。状态邮箱长度为 1，慢消费者会合并中间变化，只保留最新值，不是每个事件的历史记录。第一个接收者可读到当前快照；由同一个应用任务再分发给页面，多个消费者不得争抢该邮箱。
+
+speaker_service_control 返回 ESP_OK 只表示接收请求；繁忙返回 ESP_ERR_NOT_FINISHED，未连接返回 ESP_ERR_INVALID_STATE。观察 control_busy/control_result 获取手机接受、拒绝、发送失败或超时结果；发送成功不等于播放状态改变。playback 来自手机 AVRCP 状态和 A2DP 回退事件，streaming 单独表示音频流，二者不混同。PLAY_PAUSE 在状态未知时返回 ESP_ERR_INVALID_STATE，可改为显式 PLAY/PAUSE。控制接口已封装按下/释放配对及断连取消。
+
+音量在音频任务内对左右声道统一缩放，使用 32 位乘法；增益不超过 1，无放大溢出。手机设置音量不会回发通知；本地修改仅在手机订阅时发送一次 CHANGED，并等待手机重新订阅。set_volume 返回 ESP_OK 表示本地增益已设置，协议同步异步完成，失败会重试，可查看 volume_sync_result。volume_connected 只代表 TG 通道连接，不保证手机支持绝对音量。初次实测仍从音源低音量开始，手机可能覆盖初始音量。
+
+调用示例（实际接入应处理返回值）：
+
+```c
+speaker_state_t state;
+if (speaker_service_wait_state(&state, 1000) == ESP_OK) {
+    /* 把 state 复制给页面，或在当前应用任务内刷新显示。 */
+}
+esp_err_t err = speaker_service_control(SPEAKER_CONTROL_PLAY_PAUSE);
+/* err == ESP_ERR_NOT_FINISHED 时等待上一条完成，不循环忙等。 */
+err = speaker_service_set_volume(40);
+```
+
+软件回归：python3 tools/test_speaker_service.py（需要主机 C 编译器，无设备访问）。临时文件默认使用 E:\Codex\work，WSL 使用 /mnt/e/Codex/work；其他环境显式传 --work-dir。
 
 ## 指导者负责的硬件前置条件
 

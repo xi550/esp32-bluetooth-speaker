@@ -1,1 +1,2 @@
-/* TODO(intern): polling, debounce, short/long press, mapping and AVRCP via buttons_read(). */
+/* TODO(intern): scan/debounce via buttons_read(); map key events to
+ * speaker_service_control() / speaker_service_set_volume(). AVRCP is internal. */

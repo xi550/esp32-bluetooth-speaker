@@ -27,4 +27,8 @@ menu "Speaker service"
 config SPEAKER_BT_NAME
  string "Bluetooth name"
  default "ESP32-Speaker-Lab"
+config SPEAKER_INITIAL_VOLUME
+ int "Initial PCM volume (0=mute, 127=full scale)"
+ range 0 127
+ default 40
 endmenu
