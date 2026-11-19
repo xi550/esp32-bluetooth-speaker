@@ -46,6 +46,9 @@ def main():
 ''')
         source = temp / 'check.c'
         source.write_text(
+            '#include "board_esp_proj_cfg.h"\n'
+            '#ifdef TEST_BL_BAD_PIN\n#undef BOARD_LCD_BL_PIN\n'
+            '#define BOARD_LCD_BL_PIN ((gpio_num_t)TEST_BL_BAD_PIN)\n#endif\n'
             '#include "' + str(board / 'board_esp_proj.c') + '"\n'
             '#include "' + str(root / 'sdk/apps/esp_app/device/buttons.c') + '"\n' + '''
 static unsigned init_calls;
@@ -56,6 +59,11 @@ int gpio_get_level(gpio_num_t pin) { return level; }
 esp_err_t audio_output_init(void) { ++init_calls; return ESP_OK; }
 esp_err_t lcd_hal_init(void) { ++init_calls; return ESP_OK; }
 int main(void) {
+#if defined(TEST_BL_BAD_PIN) && BOARD_LCD_ENABLE
+ assert(board_init()==ESP_ERR_INVALID_ARG);
+ assert(init_calls==0);
+ return 0;
+#endif
  bool pressed;
  assert(buttons_read(0,&pressed)==ESP_ERR_INVALID_STATE);
  assert(board_init()==ESP_OK);
@@ -94,8 +102,13 @@ int main(void) {
             str(source), '-o', str(executable),
         ]
         for lcd_enabled in (False, True):
-            subprocess.run(command + (['-DBOARD_LCD_ENABLE=1'] if lcd_enabled else []), check=True)
+            subprocess.run(command + ['-DBOARD_LCD_ENABLE=' + str(int(lcd_enabled))], check=True)
             subprocess.run([str(executable)], check=True)
+        for pin in (26, 34, 6):
+            for enabled in (0, 1):
+                subprocess.run(command + ['-DBOARD_LCD_ENABLE=' + str(enabled),
+                                          '-DTEST_BL_BAD_PIN=' + str(pin)], check=True)
+                subprocess.run([str(executable)], check=True)
     print('PASS: board init with LCD on/off, GPIO validation/conflicts/reserved/pulls and raw button levels')
 
 

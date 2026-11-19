@@ -1,6 +1,8 @@
 #pragma once
 
-/* 实习生负责的应用入口，在板级硬件和服务初始化后调用一次。
- * 在这里创建按键和界面任务；蓝牙连接、播放、音量状态及 AVRCP 由服务维护。
- * 通过 speaker_service.h 接收状态快照，并调用播放控制和音量接口。 */
-void app_start(void);
+#include "esp_err.h"
+
+/* 板级硬件、服务和 UI 启动后调用一次，框架自动启动扫描和按键分发任务。
+ * 实习生在 system/board_app.c 的 app_key_event 中使用 KRS/KRH 等事件。
+ * 产品业务任务通过 speaker_service.h、lvgl_port.h 接收状态和操作并回传 UI。 */
+esp_err_t app_start(void);

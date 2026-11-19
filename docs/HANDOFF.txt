@@ -7,25 +7,32 @@
 1. 阅读 README、引脚定义、HARDWARE；能解释 SBC、PCM、I2S 三者区别，完成工具安装并独立构建。
 2. 核实模组为经典 ESP32、Flash 容量和硬件接线。先完成默认固件启动，确认日志无初始化失败；手机可发现并配对。
 3. 用立体声测试音源验证音频、44.1/48kHz 切换、两块功放左右声道选择及断连重连。记录协商格式、队列溢出、堆和任务栈余量。不得以编译通过替代硬件验收。
-4. 在 keypad/board_keyevent.c 自行实现按键轮询、消抖、边沿事件及长短按判定。先只打印事件，五个键无连发、无漏报，再与业务关联。
-5. 在 app_start 创建应用任务，用 speaker_service_get_state 查询，或由一个应用任务调用 speaker_service_wait_state 接收最新状态并分发给 UI。连接、播放和音量由框架维护，不解析日志，不重复实现蓝牙状态机。
-6. 按确认的产品映射调用 speaker_service_control 实现播放/暂停/上一首/下一首，调用 speaker_service_set_volume 设置音量。AVRCP CT/TG、PCM 数字缩放及手机绝对音量同步已在框架中封装，实习生只负责按键与页面接入和实物验收。
-7. 确认 LCD 参数后启用，使用 lcd_hal_flush 自行实现像素、矩形、字体、页面、脏区刷新。先做单色/色条诊断，再设计产品 UI。禁止导入现成 UI 页面替代学习任务。
+4. 按键扫描、消抖、长按和连发已由 keypad/board_keyevent.c 实现。实习生在 system/board_app.c 的 app_key_event 中使用 switch(event) 和 KRS/KRH 等事件处理功能，不再编写 GPIO 扫描。物理映射和时序在 board_esp_proj_cfg.h 配置；确认键单双击仍由 UI 判定。
+5. UI 页面由框架实现，启用 LCD 后启动顺序会自动创建唯一 UI 任务。框架在 app_start 自动创建扫描及按键分发任务，实习生只创建功能业务任务，不创建第二个 LVGL 任务，不直接访问 LVGL 控件。
+6. 一个应用任务接收 speaker_service_wait_state 状态、lvgl_port_wait_action 操作，调用已有播放/音量接口或背光能力，然后用 lvgl_port_update 回传真实状态。AVRCP CT/TG、PCM 数字缩放及绝对音量同步由服务维护。
+7. 核实 LCD 窗口偏移、方向、反色和接线后启用 BOARD_LCD_ENABLE。先做色条诊断再验证页面；不要用编译通过代替实物显示验收。背光已分配 GPIO16、BLK 高有效；通过 lcd_hal_set_brightness 调节，不直接操作 LEDC。
 8. 联调与压力测试：连续播放至少 30 分钟、反复断连、暂停/恢复、快速按键及 LCD 刷新同时进行；记录音频中断、堆变化与最大栈用量。
 
 ## 可用接口
 
 |接口|约定|
 |---|---|
-|app_start|board_app.h 声明的应用入口，在 BSP/服务初始化后调用一次；当前为空，供实习生创建按键/UI/应用分发任务|
+|app_start|BSP/服务及已启用的 UI 启动后调用；自动创建扫描与按键分发任务，失败返回错误；实习生在此接入功能业务任务|
 |board_init|启动 GPIO/I2S；按配置启动 LCD，失败终止启动|
 |speaker_service_start|BSP 后调用一次；创建音频任务与经典蓝牙接收服务|
 |speaker_service_get_state(&state)|线程安全地复制连接、播放、流、采样率、音量及控制结果快照|
 |speaker_service_wait_state(&state, timeout_ms)|一个应用任务接收最新快照；0 轮询，UINT32_MAX 一直等待，超时返回 ESP_ERR_TIMEOUT|
 |speaker_service_control(control)|PLAY、PAUSE、PLAY_PAUSE、PREVIOUS、NEXT；非阻塞提交，同一时刻一个控制请求|
 |speaker_service_set_volume(volume)|0..127，0 静音，127 原幅度；初始值 BOARD_INITIAL_VOLUME 默认 40，不写 NVS|
-|buttons_read(index, &pressed)|0..4 对应 GPIO13/14/27/32/33；原始低有效值，无消抖|
+|buttons_read(index, &pressed)|底层原始电平接口；应用使用框架事件，不需要调用|
+|board_keys_start()|app_start 内自动调用，创建扫描任务与事件队列，不重复调用|
+|board_keys_wait(&event, timeout_ms)|由默认按键分发任务消费；event.code 为 KRS/KRH 等编码，event.time_ms 为消抖时刻，其他任务不要抢读|
+|lcd_hal_set_brightness(percent)|设置 0..100 的背光 PWM，0 关、100 常亮；失败返回错误并保留上次成功设定值|
+|lcd_hal_get_brightness(&percent)|读取最近成功提交的百分比设定；非光学测量值；未初始化返回 ESP_ERR_INVALID_STATE|
 |lcd_hal_flush(x0,y0,x1,y1,pixels)|坐标右下端点不包含；RGB565 高字节在前；单 UI 任务；阻塞到传输完成|
+|lvgl_port_update(&state)|复制完整 UI 状态，长度 1 邮箱只保留最新值；非法百分比或未终止字符串返回 ESP_ERR_INVALID_ARG|
+|lvgl_port_input(key)|框架分发按下和方向/音量连发；满队列返回 ESP_ERR_NOT_FINISHED，默认分发任务保留并重试|
+|lvgl_port_wait_action(&action, timeout_ms)|一个业务消费者接收 UI 动作；0 轮询，UINT32_MAX 等待；超时为 ESP_ERR_TIMEOUT|
 |audio_output_*|仅供音频工作任务所有，不允许 UI/按键任务并发调用|
 
 服务内 Bluetooth 回调只更新状态及待处理标记；运行期协议发送在服务任务内完成，不持状态锁调用可能阻塞的 SDK。PCM 指针为 SDK 借用内存，只在回调期间有效，服务已复制到有界队列。不要在回调里画屏、等待按键或执行 I2S 阻塞写入。
@@ -52,6 +59,180 @@ err = speaker_service_set_volume(40);
 
 ## 指导者负责的硬件前置条件
 
-确认引脚、供电、功放 SD_MODE/GAIN、扬声器、LCD 尺寸及背光接法；提供实物测试条件。确认无误后再交给实习生做页面与业务。版本升级、底层音频格式变更需评审；普通应用开发保持现有 board pin map 和服务分层。
+确认引脚、供电、功放 SD_MODE/GAIN、扬声器、LCD 尺寸及背光接法；提供实物测试条件。确认无误后再交给实习生接入按键、状态与业务。版本升级、底层音频格式变更需评审；普通应用开发保持现有 board pin map 和服务分层。
 
-本次目录迁移：产品初始化在 board_esp_proj.c，应用启动在 task/board_main.c，产品状态/任务接入在 system/board_app.c，UI 接入在 ui/board_ui.c。新增产品源码加入该 board 的 CMakeLists.txt。device/interface 提供已有公共能力，保持 PCM 回调与音频任务的内存和所有权约定。
+本次目录迁移：产品初始化在 board_esp_proj.c，应用启动在 task/board_main.c，产品状态/任务接入在 system/board_app.c，UI 页面与适配统一在 sdk/apps/esp_app/ui。新增产品源码加入该 board 的 CMakeLists.txt。device/interface 提供已有公共能力，保持 PCM 回调与音频任务的内存和所有权约定。
+
+## LVGL UI 接入约定
+
+界面采用 1.69 英寸、240×280 的深海音乐样式：主页、设置、亮度、设备信息。
+主页仅上一首、播放/暂停、下一首和设置入口；音量由实体键在所有页面调整。
+上/下循环移动焦点；确认键单击等待 300ms 后确认，300ms 内第二次按下只返回。
+正好 300ms 视为下一次单击。等待期间移动会取消原确认，避免新焦点误操作。
+返回保留父页焦点，主页双击无动作。方向和音量支持按住连发；确认忽略长按、连发和松手。不提供主页键、触摸或进度跳播。
+
+UI 核心 speaker_ui.c/.h 只依赖标准 C 和 LVGL，不引用 ESP-IDF 或 speaker_service。
+lvgl_port.c/.h 负责唯一 UI 任务、状态邮箱、按键/动作队列、时钟及 LCD flush 适配。
+移植时复制 ui 目录，保留 LVGL 9.3.0，再替换 lvgl_port.c 中的平台实现。
+LVGL 通过 idf_component.yml 和 dependencies.lock 固定版本及组件哈希，源码在 managed_components，
+首次构建需要联网下载，不修改 sdk/esp-idf。LVGL 功能裁剪统一在 ui/lv_conf.h，
+按键映射、单双击阈值、步长、刷新周期和缓存行数在 board_esp_proj_cfg.h。
+
+应用侧只包含 lvgl_port.h；以下是分发关系，不是已经接通的业务：
+
+```c
+/* 按键已由框架接入，不需要业务任务重复调用 lvgl_port_input。 */
+esp_err_t result = ESP_OK;
+
+/* 从动作队列取出后，根据 type 分发。 */
+speaker_ui_action_t action;
+if (lvgl_port_wait_action(&action, 0) == ESP_OK)
+{
+    switch (action.type)
+    {
+        case SPEAKER_UI_PREVIOUS:
+            result = speaker_service_control(SPEAKER_CONTROL_PREVIOUS);
+            break;
+        case SPEAKER_UI_PLAY_PAUSE:
+            result = speaker_service_control(SPEAKER_CONTROL_PLAY_PAUSE);
+            break;
+        case SPEAKER_UI_NEXT:
+            result = speaker_service_control(SPEAKER_CONTROL_NEXT);
+            break;
+        case SPEAKER_UI_VOLUME:
+            /* 读取服务当前音量，转换为百分比，加 action.delta 后限制到 0..100，
+             * 再转换回 0..127 调用 speaker_service_set_volume。 */
+            break;
+        case SPEAKER_UI_BRIGHTNESS:
+        {
+            uint8_t brightness;
+            result = lcd_hal_get_brightness(&brightness);
+            if (result == ESP_OK)
+            {
+                int next = (int)brightness + action.delta;
+                if (next < 0)
+                {
+                    next = 0;
+                }
+                else if (next > 100)
+                {
+                    next = 100;
+                }
+                result = lcd_hal_set_brightness((uint8_t)next);
+            }
+            break;
+        }
+    }
+    /* 检查 result，将拒绝、繁忙、发送失败等转换为中文 UI 提示。 */
+}
+```
+
+音量转换：percent = (volume * 100 + 63) / 127；volume = (percent * 127 + 50) / 100。
+不要使用 UI 中的旧音量计算下一次请求；每次动作读取服务当前值，避免快速按键丢步长。
+UI 动作中的 delta 是百分比增量：音量 ±5，亮度 ±10。UI 不自行累加显示值。
+
+由一个应用任务持有完整 speaker_ui_state_t，合并服务、媒体、歌词和背光数据后更新 UI。
+不要让多个生产者各自投递半份状态，后来的完整快照会覆盖早先字段。
+state.connection 映射到 connected/connecting；playback 映射 playing/playback_known；
+控制可用性映射 control_available，控制处理中映射 control_busy。
+volume_known 表示本地音量是否已取得；brightness_available 以 lcd_hal_get_brightness 的返回结果设置；成功时同时更新 brightness_percent。
+message 填中文操作结果或错误，UI 最长展示 2.5 秒；内容相同不会每次状态更新都重启提示。
+所有字符串须为终止的 UTF-8，长度以结构体数组字节容量为限；截断时不能切断 UTF-8 字符。
+
+歌名 title、歌手 artist、position_ms、duration_ms 以及三个歌词行均由接入方提供。
+position_known/duration_known 区分未知值和真实的 0；进度超过时长会限制显示，未知时显示 --:--。
+当前 speaker_service 尚未请求或暴露 AVRCP 媒体元数据和进度，不能只靠现有状态结构获得歌名。
+如需自动获取，应在服务层补元数据请求、曲目切换和进度通知，再由应用更新 UI；不要在 UI 调 SDK。
+标准 AVRCP 无同步歌词字段，歌词仍需独立来源；UI 接收上一行、当前行、下一行，不负责联网搜索。
+无歌词显示“暂无歌词”，无歌名显示“蓝牙音乐”；长文本单行省略，播放状态以回传值为准。
+
+BOARD_LCD_ENABLE 默认已改为 1，启动时初始化 LCD 并创建 UI 任务，使用 LVGL 局部刷新。
+窗口偏移、方向和背光仍需实物确认；无屏验证时可设置为 0。
+app_start 已启动按键扫描及默认 UI 输入分发；功能业务仍由实习生接入。未接入业务时主页显示真实的未知状态，
+不会自动播放、假装调整音量或显示预览歌曲。关闭 LCD 时 UI 适配接口返回 ESP_ERR_NOT_SUPPORTED，按键事件仍可在 app_key_event 处理。
+
+RGB565 使用单个 240×24 行 DMA 缓冲，11,520 字节，无整屏双缓冲。
+适配层完成坐标端点转换、RGB565 字节交换，等 lcd_hal_flush 完成才通知 LVGL 释放缓冲。
+LCD 传输失败记录日志，并每秒请求重绘；不阻塞等待业务动作消费者。
+用户已确认控制器为 ST7789V2，SPI 默认改为 40MHz，整屏像素传输约 26.88ms，理论上限约 37.2FPS。
+局部刷新调度采用 30ms，配合 10ms 固定周期轮询，避免原 33ms 周期因系统 100Hz 粒度延后至 40ms。
+30ms 对应约 33 次刷新机会/秒，为约 30FPS 目标留出调度余量；静止画面不重复发送。
+实际还受绘图、命令及任务竞争影响，不承诺稳定整屏 30FPS；不得把主机渲染速度视为实板帧率。
+
+## UI 字库与无设备检查
+
+ui/fonts/speaker_font_16.c 是 Noto Sans SC Medium 派生的 16px、2bpp 字库，许可证在同目录 OFL.txt。
+覆盖 ASCII、基本汉字 U+4E00..U+9FFF 和常用标点；没有覆盖扩展区生僻字、日文假名或 emoji。
+缺字使用 LVGL 占位显示，不承诺显示所有 Unicode 字符；大字库保存在 Flash，不整体复制到 RAM。
+生成文件只有数字数据及描述，不手改；fonts/.clang-format 禁用生成数据的自动重排，手写页面代码仍按项目规范检查。重新生成需 Node.js 和 lv_font_conv 1.5.3，
+把工具安装到 E:\Codex\work 后运行：
+
+```bash
+python3 sdk/tools/generate_ui_font.py --font /mnt/e/Codex/work/speaker-font/NotoSansSC-Medium.otf \
+    --converter /mnt/e/Codex/work/speaker-font/node_modules/lv_font_conv/lv_font_conv.js
+```
+
+原字体来源 https://github.com/notofonts/noto-cjk/tree/main/Sans/SubsetOTF/SC ，脚本固定其 SHA256，
+拒绝用不同文件无声覆盖。先在工作目录安装转换工具：npm install --prefix <工作目录> lv_font_conv@1.5.3。
+正常固件构建不需要 Node.js、原始 TTF 或字体转换器。
+
+运行 python3 sdk/tools/test_speaker_ui.py，用实际 LVGL 在主机检查导航、300ms 边界、
+双击不误确认、全局音量键、真实状态回传、缺失数据、满动作队列和静态页面不重复重绘，
+并在 E:\Codex\work\speaker-ui-test 输出四页 PPM。需主机 C/C++ 编译器、CMake 和 Ninja；
+先构建一次固件以取得锁定组件。该检查不访问设备，也不能验证 SPI、电源、背光或实际 FPS。
+
+## 背光调用与接线
+
+按用户转述的卖家指引，将 GPIO16 接屏幕 BLK，屏幕与 ESP32 共地；低电平关闭、高电平打开。
+默认 20kHz、10 位 PWM，GPIO 只提供控制信号；PWM 调光效果与高低亮度仍需实板验证。
+相关参数集中在 cfg.h；LED PWM 使用低速组定时器 0、通道 0，不能被其他功能复用。
+初始化保持背光关闭，UI 首帧成功发送后设为 BOARD_INITIAL_BRIGHTNESS（60%）。
+之后由同一个业务任务串行调用 lcd_hal_set_brightness / lcd_hal_get_brightness，不能从 ISR 调用。
+需要包含 lcd_hal.h；更新完整 UI 状态时也要合并背光信息，避免覆盖成“未接入”：
+
+```c
+ui_state.brightness_available =
+    lcd_hal_get_brightness(&ui_state.brightness_percent) == ESP_OK;
+esp_err_t result = lvgl_port_update(&ui_state);
+```
+
+get 返回成功设置的占空比百分比，不是光学测量；PWM 改动从后续周期生效，不写 NVS。
+无屏模式不调用 lcd_hal_init，亮度接口返回 ESP_ERR_INVALID_STATE。
+检查命令：python3 sdk/tools/test_lcd_backlight.py；使用实际 SDK LEDC 类型及生产代码，
+验证极性、0..100% 占空比、初始化失败和设置失败时保留旧值，不访问设备。
+
+## 框架按键事件
+
+默认接线：GPIO13 上移、GPIO14 下移、GPIO27 确认/返回、GPIO32 音量加、GPIO33 音量减。
+按键一端接对应 GPIO，另一端接 GND，使用内部上拉、低有效。
+默认扫描 10ms、连续稳定 30ms 消抖、按下消抖后 600ms 长按、随后每 150ms 连发；
+均在 board_esp_proj_cfg.h 调整。各键独立处理，可同时按下；开机按住也会产生按下事件。
+
+事件沿用参考项目写法：
+- KRS(key)：消抖后的按下，立即触发，不是松手才触发的短按。
+- KRU(key)：达到长按前松手。
+- KRL(key)：达到长按门限，仅一次。
+- KRH(key)：长按后的周期连发；调度落后时不补发历史事件。
+- KRLU(key)：长按后松手。
+同一次长按依次产生 KRS、KRL、零到多个 KRH、KRLU。
+不提供参考项目的 KRL2、组合键或额外双击事件；确认单双击统一由 UI 处理。
+
+system/board_app.c 已包含实际可用的分发 switch，例如：
+
+```c
+case KRS(RKEY_VOL_UP):
+case KRH(RKEY_VOL_UP):
+    key = SPEAKER_UI_KEY_VOLUME_UP;
+    break;
+```
+
+默认代码只把方向、确认及音量输入交给 UI，UI 发出动作后仍需实习生调用实际功能接口。
+如果改为在此直接调用音量接口，应替换该分支的 UI 投递，避免与 UI 动作消费重复加音量。
+长按 KRL 不再额外执行一次方向/音量动作；KRH 才执行连续调节。
+确认只转发 KRS，不能把 KRL/KRH/KRU/KRLU 当成第二次点击。
+
+扫描任务与按键分发任务独立，业务处理不应长时间阻塞分发。
+队列容量 32，积压时为五键按下和松手保留 10 个位置，优先省略连发。
+消费者长期停止仍可能耗尽队列，此时明确记录丢失事件错误日志；不保证无限缓存。
+事件保留消抖时刻，默认分发通过 lvgl_port_input_at 重试时不改时间。
+软件验证：python3 sdk/tools/test_keys.py；真实按键抖动、快速双击、持续按住和多键同时按下仍需实板验收。

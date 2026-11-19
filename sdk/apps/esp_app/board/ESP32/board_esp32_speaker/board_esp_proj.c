@@ -23,6 +23,17 @@ _Static_assert(BOARD_INITIAL_VOLUME >= 0 && BOARD_INITIAL_VOLUME <= 127, "Volume
 _Static_assert(
     sizeof(BOARD_BT_NAME) > 1 && sizeof(BOARD_BT_NAME) <= 249, "BT name must be 1..248 bytes");
 
+_Static_assert(BOARD_KEY_UP_INDEX >= 0 && BOARD_KEY_UP_INDEX < BOARD_BUTTON_COUNT &&
+        BOARD_KEY_DOWN_INDEX >= 0 && BOARD_KEY_DOWN_INDEX < BOARD_BUTTON_COUNT &&
+        BOARD_KEY_CONFIRM_INDEX >= 0 && BOARD_KEY_CONFIRM_INDEX < BOARD_BUTTON_COUNT &&
+        BOARD_KEY_VOLUME_UP_INDEX >= 0 && BOARD_KEY_VOLUME_UP_INDEX < BOARD_BUTTON_COUNT &&
+        BOARD_KEY_VOLUME_DOWN_INDEX >= 0 && BOARD_KEY_VOLUME_DOWN_INDEX < BOARD_BUTTON_COUNT,
+    "Key function index out of range");
+_Static_assert(
+    ((1u << BOARD_KEY_UP_INDEX) | (1u << BOARD_KEY_DOWN_INDEX) | (1u << BOARD_KEY_CONFIRM_INDEX) |
+        (1u << BOARD_KEY_VOLUME_UP_INDEX) | (1u << BOARD_KEY_VOLUME_DOWN_INDEX)) == 31u,
+    "Key function indexes must be unique");
+
 /* 在任何驱动操作 GPIO 前检查配置；只有已启用的外设才占用引脚。 */
 static esp_err_t validate_pins(
     const gpio_num_t *pins, unsigned outputs, unsigned count, bool key_pulls)
@@ -77,6 +88,7 @@ esp_err_t board_init(void)
         BOARD_LCD_CS,
         BOARD_LCD_DC,
         BOARD_LCD_RST,
+        BOARD_LCD_BL_PIN,
 #endif
     };
     static const gpio_num_t keys[] = BOARD_BUTTON_PINS;

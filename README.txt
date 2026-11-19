@@ -15,6 +15,7 @@ sdk/
     CMakeLists.txt                   应用构建入口
     device/                          I2S、ST7789、原始按键驱动
     interface/                       蓝牙接收、PCM 队列、音频工作任务
+    ui/                              LVGL 页面、状态/操作接口及薄适配层
     board/ESP32/board_esp32_speaker/
       CMakeLists.txt                 本产品的源码清单与依赖
       board_esp_proj.c/.h            GPIO/I2S/LCD 初始化编排
@@ -24,8 +25,7 @@ sdk/
       partitions.csv                本产品分区表
       task/board_main.c             app_main，启动顺序
       system/board_app.c            app_start，产品状态与任务接入位置
-      keypad/board_keyevent.c       按键行为学习任务，当前为空
-      ui/board_ui.c                 绘图与页面学习任务，当前为空
+      keypad/board_keyevent.c       按键扫描、消抖与短按/长按/连发事件
   tools/                            Linux / Windows 安装、构建、校验
   .vscode/                          打开 sdk 目录使用的任务与补全
 esp-idf.snapshot.json                来源、依赖 commit、逐文件 SHA256
@@ -48,14 +48,14 @@ rg --files sdk/apps/esp_app -g '*.c' -g '*.h' -0 | xargs -0 clang-format --dry-r
 
 ## 配置入口
 
-- board_esp_proj_cfg.h：统一的产品配置入口，包括 GPIO_NUM_x 接线、按键有效电平/上下拉、LCD 开关/尺寸/偏移/反色/总线/方向、蓝牙名称和初始音量。产品配置不再使用 Kconfig.projbuild。
+- board_esp_proj_cfg.h：统一的产品配置入口，包括 GPIO_NUM_x 接线、按键有效电平/上下拉、LCD 开关/尺寸/偏移/反色/总线/方向、蓝牙名称、初始音量和固件版本号 BOARD_FIRMWARE_VERSION。构建与设备信息页共用此版本，修改后正常编译即可。产品配置不再使用 Kconfig.projbuild。
 - sdkconfig.defaults：首次配置的项目默认值；已有 sdkconfig 时，不会覆盖其中已保存的选项。
 - sdk/apps/esp_app/sdkconfig：ESP-IDF 系统配置的当前选择（蓝牙协议栈、Flash、系统任务等）；通过 bash sdk/tools/build.sh menuconfig 修改，Windows 使用 sdk/tools/build.ps1 -Action menuconfig。
 - build/linux/config/sdkconfig.h：自动生成供 C 代码使用的 CONFIG_* 宏，不手工修改；Windows 使用对应 build/windows 目录。
 
 启动时先检查启用外设的 GPIO 有效性、输出/上下拉能力、Flash 占用和重复分配，再初始化驱动。
 启动配置脚和默认 UART 引脚会告警，仍需按原理图核对模组引出、上电电平及 JTAG 等复用。
-背光和功放控制脚未确认，不分配 GPIO。按键时间阈值在实现事件层时再集中定义。
+背光分配 GPIO16，BLK 高有效，20kHz PWM，启动亮度 60%；功放控制脚仍由硬件接线决定。五键映射、300ms 双击间隔、调节步长及 UI 刷新参数也在 cfg.h 配置。
 
 ## 构建
 
@@ -99,13 +99,15 @@ sdk.lock.json 记录上游版本；esp-idf.snapshot.json 记录导入的 27 个�
 数据路径保持：手机 SBC → 官方 Bluedroid 内部解码 → 借用 PCM 回调 → 复制到有界队列 → 音频任务 → I2S。
 回调不阻塞等待 I2S；队列满时丢弃剩余数据。采样率随协商切换，连接代号用于丢弃旧队列数据。
 交错 PCM16 立体声在音频任务内统一缩放音量，两块 MAX98357A 通过硬件 SD_MODE 选择左右声道。
-当前不支持单声道协商；LCD 默认不初始化，尺寸和偏移等仍需实物确认。
+当前不支持单声道协商；LCD 为 1.69 英寸、240×280，默认启用并启动 LVGL 局部刷新；窗口偏移、方向和背光仍需实物确认。
 
 保留内部解码 PCM 的 legacy API esp_a2d_sink_register_data_callback；升级 SDK 需要重新评估。
 不改用 ESP32-S3/C3，不改蓝牙音频协议、引脚、队列大小或硬件参数。
 框架维护连接、播放器、音频流与音量状态；speaker_service.h 提供查询、状态变化接收、
 播放/暂停/上一首/下一首及音量接口。AVRCP CT 控制手机，TG 接收/同步绝对音量，实习生不实现协议。
-UI、按键消抖与功能映射、应用任务分发仍待开发。接口用法见 docs/HANDOFF.txt。
+UI 已实现深海音乐主页、设置、亮度和设备信息，采用 LVGL 9.3.0 单任务与局部刷新。
+按键扫描、消抖和事件分发已由框架实现；实习生只处理 KRS/KRH 等事件、调用业务接口并回传真实状态。
+媒体元数据/进度尚未接入服务，歌词需独立来源；背光接口 lcd_hal_set_brightness/get_brightness 已实现。接口用法见 docs/HANDOFF.txt。
 音量范围 0..127；0 静音，127 原幅度，初始值由 BOARD_INITIAL_VOLUME 配置，默认 40，不写 NVS。
 手机需支持并订阅 AVRCP 绝对音量通知，双向同步才生效；默认初始值不构成硬件最大音量限制。
 编译通过不代表配对、实际播放、显示、按键及长时间运行通过实板验收。

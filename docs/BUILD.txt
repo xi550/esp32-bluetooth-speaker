@@ -23,6 +23,8 @@ setup.sh 校验内置 SDK，安装 SDK 推荐的 CMake 3.30.2、ESP32 工具链�
 Ubuntu 20.04 的系统 CMake 3.16 无法正确处理此 SDK 的蓝牙库路径，构建使用已安装的官方推荐版本。
 工具默认 ~/.espressif，构建输出默认 <仓库>/build/linux。
 首次安装需联网获取编译器与 Python 依赖，SDK 源码不再另外下载。
+首次配置应用还会按 idf_component.yml 和 dependencies.lock 下载 LVGL 9.3.0 到 managed_components；
+保留锁文件，勿手改组件源码。离线构建须预先准备组件缓存或完整 managed_components。
 SDK 路径发生变化后先运行 setup.sh，让官方工具登记该路径对应的 esp32 目标。
 BUILD_PATH 可覆盖构建目录，IDF_TOOLS_PATH 可覆盖工具目录；迁移构建目录后使用新的空目录。
 SDK_PATH 可指定同一导入快照的副本；它仍必须通过整个快照校验。
@@ -57,6 +59,8 @@ SDK_PATH 可指定同一导入快照的副本；它仍必须通过整个快照�
 
 产品目录：sdk/apps/esp_app/board/ESP32/board_esp32_speaker。
 引脚、LCD 开关与参数、蓝牙名称、初始音量统一在 board_esp_proj_cfg.h 修改；产品 Kconfig.projbuild 已移除。menuconfig 仅用于 ESP-IDF 系统配置，分区表在 partitions.csv。
+固件版本统一在 board_esp_proj_cfg.h 的 BOARD_FIRMWARE_VERSION 设置，CMake 自动读取并跟踪头文件变化。
+版本使用 1～31 个英文字母、数字、点、下划线、加号或连字符；不要再在 CMake 或 menuconfig 单独设置版本。
 已有 sdkconfig 中的旧 CONFIG_SPEAKER_* 项不再控制产品行为；迁移后执行一次 reconfigure，再正常编译。
 sdkconfig.defaults 只提供首次默认值；已有配置 sdk/apps/esp_app/sdkconfig 优先。
 分区表路径为相对应用工程的 board/ESP32/board_esp32_speaker/partitions.csv。

@@ -1,6 +1,7 @@
 #include "lcd_hal.h"
 #include "board_esp_proj_cfg.h"
 #include "driver/spi_master.h"
+#include "driver/ledc.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
@@ -10,6 +11,75 @@
 
 static esp_lcd_panel_handle_t panel;
 static SemaphoreHandle_t done;
+static bool backlight_ready;
+static uint8_t brightness_percent;
+
+_Static_assert(BOARD_LCD_BL_ACTIVE_LEVEL == 0 || BOARD_LCD_BL_ACTIVE_LEVEL == 1,
+    "Backlight active level must be 0 or 1");
+_Static_assert(BOARD_LCD_BL_PWM_BITS >= 1 && BOARD_LCD_BL_PWM_BITS <= 14,
+    "Backlight PWM resolution must be 1..14 bits");
+_Static_assert(BOARD_LCD_BL_PWM_HZ > 0, "Backlight PWM frequency must be positive");
+_Static_assert(BOARD_INITIAL_BRIGHTNESS >= 0 && BOARD_INITIAL_BRIGHTNESS <= 100,
+    "Initial brightness must be 0..100");
+
+static esp_err_t backlight_init(void)
+{
+    ledc_timer_config_t timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = BOARD_LCD_BL_PWM_BITS,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = BOARD_LCD_BL_PWM_HZ,
+        .clk_cfg = LEDC_AUTO_CLK,
+    };
+    ESP_RETURN_ON_ERROR(ledc_timer_config(&timer), "lcd", "backlight timer");
+    ledc_channel_config_t channel = {
+        .gpio_num = BOARD_LCD_BL_PIN,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .channel = LEDC_CHANNEL_0,
+        .intr_type = LEDC_INTR_DISABLE,
+        .timer_sel = LEDC_TIMER_0,
+        .duty = 0,
+        .hpoint = 0,
+        .flags.output_invert = BOARD_LCD_BL_ACTIVE_LEVEL == 0,
+    };
+    ESP_RETURN_ON_ERROR(ledc_channel_config(&channel), "lcd", "backlight channel");
+    brightness_percent = 0;
+    backlight_ready = true;
+    return ESP_OK;
+}
+
+esp_err_t lcd_hal_set_brightness(uint8_t percent)
+{
+    if (percent > 100)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!backlight_ready)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint32_t duty = ((1u << BOARD_LCD_BL_PWM_BITS) * percent + 50u) / 100u;
+    ESP_RETURN_ON_ERROR(
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty), "lcd", "backlight duty");
+    ESP_RETURN_ON_ERROR(
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0), "lcd", "backlight update");
+    brightness_percent = percent;
+    return ESP_OK;
+}
+
+esp_err_t lcd_hal_get_brightness(uint8_t *percent)
+{
+    if (!percent)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!backlight_ready)
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    *percent = brightness_percent;
+    return ESP_OK;
+}
 
 static bool on_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *ev, void *ctx)
 {
@@ -20,10 +90,11 @@ static bool on_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t 
 
 esp_err_t lcd_hal_init(void)
 {
-    if (panel)
+    if (panel || backlight_ready)
     {
         return ESP_ERR_INVALID_STATE;
     }
+    ESP_RETURN_ON_ERROR(backlight_init(), "lcd", "backlight");
     done = xSemaphoreCreateBinary();
     if (!done)
     {

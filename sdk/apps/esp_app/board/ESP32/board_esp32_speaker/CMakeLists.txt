@@ -4,7 +4,9 @@ idf_component_register(
         "task/board_main.c"
         "system/board_app.c"
         "keypad/board_keyevent.c"
-        "ui/board_ui.c"
+        "../../../ui/speaker_ui.c"
+        "../../../ui/lvgl_port.c"
+        "../../../ui/fonts/speaker_font_16.c"
         "../../../device/audio_output.c"
         "../../../device/buttons.c"
         "../../../device/lcd_hal.c"
@@ -13,11 +15,16 @@ idf_component_register(
         "."
         "../../../device/include"
         "../../../interface/include"
+        "../../../ui"
     REQUIRES
         bt
         nvs_flash
         esp_driver_gpio
         esp_driver_i2s
         esp_driver_spi
+        esp_driver_ledc
         esp_lcd
+        esp_timer
+        esp_app_format
+        lvgl__lvgl
 )
