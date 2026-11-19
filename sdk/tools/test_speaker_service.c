@@ -1,5 +1,5 @@
 /* Compile the real service; only transport and scheduling are fake. */
-#include "../sdk/apps/esp_app/interface/speaker_service.c"
+#include "../apps/esp_app/interface/speaker_service.c"
 #include <limits.h>
 
 struct fake_queue { unsigned depth, size, count; uint8_t data[12 * sizeof(pcm_block_t)]; };

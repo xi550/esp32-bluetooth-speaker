@@ -1,6 +1,6 @@
 """Host check of the production service with SDK types and fake transport/RTOS.
 
-Run: python3 tools/test_speaker_service.py
+Run: python3 sdk/tools/test_speaker_service.py
 Requires a host C compiler; never accesses a device. Temporary files default to
 E:\\Codex\\work (Windows) or /mnt/e/Codex/work (WSL); override with --work-dir.
 """
@@ -79,7 +79,7 @@ def main():
         'E:/Codex/work' if os.name == 'nt' else '/mnt/e/Codex/work'))
     args = parser.parse_args()
     args.work_dir.mkdir(parents=True, exist_ok=True)
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     components = root / 'sdk/esp-idf/components'
     with tempfile.TemporaryDirectory(prefix='speaker-service-', dir=args.work_dir) as temp:
         temp = Path(temp)
@@ -98,7 +98,7 @@ def main():
             '-I' + str(components / 'bt/host/bluedroid/api/include/api'),
             '-I' + str(root / 'sdk/apps/esp_app/interface/include'),
             '-I' + str(root / 'sdk/apps/esp_app/device/include'),
-            str(root / 'tools/test_speaker_service.c'), '-o', str(executable),
+            str(root / 'sdk/tools/test_speaker_service.c'), '-o', str(executable),
         ]
         subprocess.run(command, check=True)
         subprocess.run([str(executable)], check=True)

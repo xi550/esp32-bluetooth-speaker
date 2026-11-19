@@ -1,7 +1,7 @@
 {
     "search.exclude": {
         "build/**": true,
-        "sdk/esp-idf/**": true
+        "esp-idf/**": true
     },
     "files.watcherExclude": {
         "**/build/**": true
@@ -10,5 +10,5 @@
         "speaker_service.h": "c",
         "*.inc": "c"
     },
-    "cmake.sourceDirectory": "/home/ax2869/esp32-speaker/sdk/esp-idf"
+    "cmake.sourceDirectory": "${workspaceFolder}/apps/esp_app"
 }

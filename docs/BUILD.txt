@@ -13,10 +13,10 @@ sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv 
 # Ubuntu 20.04 的默认 Python 3.8 不满足要求，需并行安装：
 sudo apt-get install python3.9 python3.9-venv
 cd /home/ax2869/esp32-speaker
-bash tools/setup.sh
-bash tools/build.sh
-bash tools/build.sh menuconfig
-bash tools/build.sh size
+bash sdk/tools/setup.sh
+bash sdk/tools/build.sh
+bash sdk/tools/build.sh menuconfig
+bash sdk/tools/build.sh size
 ```
 
 setup.sh 校验内置 SDK，安装 SDK 推荐的 CMake 3.30.2、ESP32 工具链及隔离 Python 环境。
@@ -32,18 +32,18 @@ SDK_PATH 可指定同一导入快照的副本；它仍必须通过整个快照�
 准备 Git、Python >= 3.9；在本地 Windows 检出目录运行：
 
 ```powershell
-.\tools\setup.ps1
-.\tools\build.ps1
-.\tools\build.ps1 -Action menuconfig
-.\tools\build.ps1 -Action size
+.\sdk\tools\setup.ps1
+.\sdk\tools\build.ps1
+.\sdk\tools\build.ps1 -Action menuconfig
+.\sdk\tools\build.ps1 -Action size
 ```
 
 工具默认使用 %USERPROFILE%\.espressif；优先使用环境变量 IDF_TOOLS_PATH。
 自定义工具目录时，setup.ps1/build.ps1 传入相同的 -ToolsPath，例如：
 
 ```powershell
-.\tools\setup.ps1 -ToolsPath "$env:USERPROFILE\.espressif"
-.\tools\build.ps1 -ToolsPath "$env:USERPROFILE\.espressif"
+.\sdk\tools\setup.ps1 -ToolsPath "$env:USERPROFILE\.espressif"
+.\sdk\tools\build.ps1 -ToolsPath "$env:USERPROFILE\.espressif"
 ```
 
 构建输出默认 <仓库>\build\windows，可通过 -BuildPath 覆盖。
@@ -65,8 +65,8 @@ sdkconfig.defaults 只提供首次默认值；已有配置 sdk/apps/esp_app/sdkc
 SDK 校验和轻量检查：
 
 ```bash
-python3 tools/check_sdk.py
-python3 tools/test_sdk_snapshot.py
+python3 sdk/tools/check_sdk.py
+python3 sdk/tools/test_sdk_snapshot.py
 ```
 
 安装入口和手动 check_sdk.py 覆盖所有导入文件的 SHA256，包括递归依赖中的预编译库；修改或缺失时校验终止。
@@ -78,12 +78,12 @@ python3 tools/test_sdk_snapshot.py
 确认硬件、电源及实际串口后自行执行：
 
 ```bash
-bash tools/build.sh -p /dev/ttyUSB0 flash monitor
+bash sdk/tools/build.sh -p /dev/ttyUSB0 flash monitor
 ```
 
 ```powershell
-.\tools\build.ps1 -Action flash -Port COM5
-.\tools\build.ps1 -Action monitor -Port COM5
+.\sdk\tools\build.ps1 -Action flash -Port COM5
+.\sdk\tools\build.ps1 -Action monitor -Port COM5
 ```
 
 Ctrl+] 退出监视。默认 4MB Flash、3MB factory、DIO/40MHz，无 OTA。
@@ -92,12 +92,12 @@ Ctrl+] 退出监视。默认 4MB Flash、3MB factory、DIO/40MHz，无 OTA。
 
 ## VS Code 一键编译与烧录
 
-打开仓库根目录，首次运行对应平台的 setup 脚本。WSL 通过 VS Code WSL 扩展打开目录。
-Ctrl+Shift+B 默认运行 build + flash：Linux/WSL 调用 bash tools/build.sh build flash，
-Windows 调用 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\build.ps1 -Action build+flash。
+VS Code 打开 sdk 目录；以下命令行示例从仓库根目录执行。首次运行对应平台的 setup 脚本。WSL 通过 VS Code WSL 扩展打开目录。
+Ctrl+Shift+B 默认运行 build + flash：Linux/WSL 调用 bash sdk/tools/build.sh build flash，
+Windows 调用 powershell.exe -NoProfile -ExecutionPolicy Bypass -File sdk\tools\build.ps1 -Action build+flash。
 显式先 build 再 flash，构建失败时不会执行烧录。编译成功后枚举串口；没有串口或指定的串口未连接时，
 提示跳过烧录并返回成功，不影响普通编译。串口存在时仍由官方工具探测设备并下载；实际连接/烧录失败继续报错。
-Windows/Linux 共用 tools/run_idf.py 中的这一判断，不需要额外 GUI 上位机。
+Windows/Linux 共用 sdk/tools/run_idf.py 中的这一判断，不需要额外 GUI 上位机。
 单独执行 flash 仍保留官方失败行为；自动跳过只用于任务的 build + flash 组合。
 需要仅编译时，通过“任务：运行任务”选择 build only。
 
@@ -105,11 +105,11 @@ Windows/Linux 共用 tools/run_idf.py 中的这一判断，不需要额外 GUI �
 也可以直接执行指定串口的脚本命令：
 
 ```bash
-bash tools/build.sh -p /dev/ttyUSB0 build flash
+bash sdk/tools/build.sh -p /dev/ttyUSB0 build flash
 ```
 
 ```powershell
-.\tools\build.ps1 -Port COM5 -Action build+flash
+.\sdk\tools\build.ps1 -Port COM5 -Action build+flash
 ```
 
 Windows 需 USB 串口驱动；Linux 用户需串口访问权限；WSL2 需先把 USB 串口设备接入 WSL。
@@ -120,4 +120,4 @@ Windows 需 USB 串口驱动；Linux 用户需串口访问权限；WSL2 需先�
 首次使用先编译一次；如自定义构建输出目录，还需对应调整 compileCommands 路径。
 settings.json 只调整搜索与文件监听，不改变编译参数，不关闭错误诊断。
 
-无设备逻辑回归检查（激活 ESP-IDF 环境后执行）：`python tools/test_run_idf.py`。
+无设备逻辑回归检查（激活 ESP-IDF 环境后执行）：`python sdk/tools/test_run_idf.py`。

@@ -8,7 +8,7 @@ import sys
 
 def check_sdk(repository, sdk, version_only=False):
     lock = json.loads((repository / 'sdk.lock.json').read_text(encoding='utf-8'))
-    snapshot = json.loads((repository / 'sdk/esp-idf.snapshot.json').read_text(encoding='utf-8'))
+    snapshot = json.loads((repository / 'esp-idf.snapshot.json').read_text(encoding='utf-8'))
     for key in ('repository', 'tag', 'commit'):
         if snapshot[key] != lock[key]:
             raise ValueError('SDK snapshot differs from sdk.lock.json: ' + key)
@@ -25,7 +25,7 @@ def check_sdk(repository, sdk, version_only=False):
 
 
 if __name__ == '__main__':
-    repository = Path(__file__).resolve().parent.parent
+    repository = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('sdk', nargs='?', type=Path, default=repository / 'sdk/esp-idf')
     parser.add_argument('--version-only', action='store_true', help='Check pinned metadata and version without hashing source files')

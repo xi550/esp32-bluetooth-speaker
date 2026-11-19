@@ -48,7 +48,7 @@ esp_err_t err = speaker_service_control(SPEAKER_CONTROL_PLAY_PAUSE);
 err = speaker_service_set_volume(40);
 ```
 
-软件回归：python3 tools/test_speaker_service.py（需要主机 C 编译器，无设备访问）。临时文件默认使用 E:\Codex\work，WSL 使用 /mnt/e/Codex/work；其他环境显式传 --work-dir。
+软件回归：python3 sdk/tools/test_speaker_service.py（需要主机 C 编译器，无设备访问）。临时文件默认使用 E:\Codex\work，WSL 使用 /mnt/e/Codex/work；其他环境显式传 --work-dir。
 
 ## 指导者负责的硬件前置条件
 

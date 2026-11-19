@@ -1,4 +1,4 @@
-"""Run with python3 tools/test_sdk_snapshot.py; no third-party packages needed."""
+"""Run with python3 sdk/tools/test_sdk_snapshot.py; no third-party packages needed."""
 import hashlib
 import json
 from pathlib import Path
@@ -8,7 +8,7 @@ from check_sdk import check_sdk
 
 
 def main():
-    build = Path(__file__).resolve().parent.parent / 'build'
+    build = Path(__file__).resolve().parents[2] / 'build'
     build.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=build) as directory:
         repository = Path(directory)
@@ -21,7 +21,7 @@ def main():
             (sdk / name).write_bytes(data)
         snapshot = dict(lock, sha256={name: hashlib.sha256(data).hexdigest()
                                       for name, data in contents.items()})
-        manifest = repository / 'sdk/esp-idf.snapshot.json'
+        manifest = repository / 'esp-idf.snapshot.json'
         manifest.write_text(json.dumps(snapshot))
         check_sdk(repository, sdk)
         check_sdk(repository, sdk, version_only=True)

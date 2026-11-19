@@ -1,0 +1,25 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "Linux",
+            "compileCommands": "${workspaceFolder}/../build/linux/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}/apps/esp_app/board/ESP32/board_esp32_speaker",
+                "${workspaceFolder}/apps/esp_app/device/include",
+                "${workspaceFolder}/apps/esp_app/interface/include",
+                "${workspaceFolder}/../build/linux/config"
+            ]
+        },
+        {
+            "name": "Win32",
+            "compileCommands": "${workspaceFolder}/../build/windows/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}/apps/esp_app/board/ESP32/board_esp32_speaker",
+                "${workspaceFolder}/apps/esp_app/device/include",
+                "${workspaceFolder}/apps/esp_app/interface/include",
+                "${workspaceFolder}/../build/windows/config"
+            ]
+        }
+    ]
+}

@@ -3,7 +3,7 @@ param(
     [string]$ToolsPath = $env:IDF_TOOLS_PATH
 )
 $ErrorActionPreference = 'Stop'
-$projectPath = Split-Path $PSScriptRoot -Parent
+$projectPath = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 if (-not $SdkPath) { $SdkPath = Join-Path $projectPath 'sdk\esp-idf' }
 if (-not $ToolsPath) { $ToolsPath = Join-Path $env:USERPROFILE '.espressif' }
 $SdkPath = & python -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' $SdkPath

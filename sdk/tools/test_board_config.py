@@ -1,5 +1,5 @@
 """Check the real board validation and button driver with fake GPIO, no device.
-Run: python3 tools/test_board_config.py (host C compiler required).
+Run: python3 sdk/tools/test_board_config.py (host C compiler required).
 """
 import os
 from pathlib import Path
@@ -29,7 +29,7 @@ int gpio_get_level(gpio_num_t pin);
 '''
 
 def main():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     board = root / 'sdk/apps/esp_app/board/ESP32/board_esp32_speaker'
     work = Path('E:/Codex/work' if os.name == 'nt' else '/mnt/e/Codex/work')
     work.mkdir(parents=True, exist_ok=True)

@@ -11,7 +11,6 @@
 ```text
 sdk/
   esp-idf/                           官方 SDK 源码及完整依赖
-  esp-idf.snapshot.json               来源、依赖 commit、逐文件 SHA256
   apps/esp_app/
     CMakeLists.txt                   应用构建入口
     device/                          I2S、ST7789、原始按键驱动
@@ -27,7 +26,9 @@ sdk/
       system/board_app.c            app_start，产品状态与任务接入位置
       keypad/board_keyevent.c       按键行为学习任务，当前为空
       ui/board_ui.c                 绘图与页面学习任务，当前为空
-tools/                              Linux / Windows 安装、构建、校验
+  tools/                            Linux / Windows 安装、构建、校验
+  .vscode/                          打开 sdk 目录使用的任务与补全
+esp-idf.snapshot.json                来源、依赖 commit、逐文件 SHA256
 build/linux/                        Linux 构建输出（不入库）
 build/windows/                      Windows 构建输出（不入库）
 ```
@@ -49,7 +50,7 @@ rg --files sdk/apps/esp_app -g '*.c' -g '*.h' -0 | xargs -0 clang-format --dry-r
 
 - board_esp_proj_cfg.h：统一的产品配置入口，包括 GPIO_NUM_x 接线、按键有效电平/上下拉、LCD 开关/尺寸/偏移/反色/总线/方向、蓝牙名称和初始音量。产品配置不再使用 Kconfig.projbuild。
 - sdkconfig.defaults：首次配置的项目默认值；已有 sdkconfig 时，不会覆盖其中已保存的选项。
-- sdk/apps/esp_app/sdkconfig：ESP-IDF 系统配置的当前选择（蓝牙协议栈、Flash、系统任务等）；通过 bash tools/build.sh menuconfig 修改，Windows 使用 tools/build.ps1 -Action menuconfig。
+- sdk/apps/esp_app/sdkconfig：ESP-IDF 系统配置的当前选择（蓝牙协议栈、Flash、系统任务等）；通过 bash sdk/tools/build.sh menuconfig 修改，Windows 使用 sdk/tools/build.ps1 -Action menuconfig。
 - build/linux/config/sdkconfig.h：自动生成供 C 代码使用的 CONFIG_* 宏，不手工修改；Windows 使用对应 build/windows 目录。
 
 启动时先检查启用外设的 GPIO 有效性、输出/上下拉能力、Flash 占用和重复分配，再初始化驱动。
@@ -61,18 +62,18 @@ rg --files sdk/apps/esp_app -g '*.c' -g '*.h' -0 | xargs -0 clang-format --dry-r
 Linux / WSL（当前工程位于 /home/ax2869/esp32-speaker）：
 
 ```bash
-bash tools/setup.sh      # 首次安装或 SDK 路径改变后执行
-bash tools/build.sh
-bash tools/build.sh menuconfig
-bash tools/build.sh size
+bash sdk/tools/setup.sh      # 首次安装或 SDK 路径改变后执行
+bash sdk/tools/build.sh
+bash sdk/tools/build.sh menuconfig
+bash sdk/tools/build.sh size
 ```
 
 Windows PowerShell（本地 Windows 检出目录）：
 
 ```powershell
-.\tools\setup.ps1
-.\tools\build.ps1
-.\tools\build.ps1 -Action menuconfig
+.\sdk\tools\setup.ps1
+.\sdk\tools\build.ps1
+.\sdk\tools\build.ps1 -Action menuconfig
 ```
 
 源码共用，工具和缓存分开：Linux 工具默认 ~/.espressif；Windows 默认 %USERPROFILE%\.espressif。
@@ -84,8 +85,8 @@ WSL 的 SDK、工具与构建输出全部在 Linux 文件系统。详见 docs/BU
 
 上游：https://github.com/espressif/esp-idf.git
 版本：v5.5.6；commit：880a203ae603d08a94d06aa01e0d6761958e5e9e。
-sdk.lock.json 记录上游版本；sdk/esp-idf.snapshot.json 记录导入的 27 个递归子模块及全部文件哈希。
-安装入口使用tools/check_sdk.py 校验全部源码，构建入口校验锁定版本与来源信息，不再把个人仓库 HEAD 当成官方 SDK commit。
+sdk.lock.json 记录上游版本；esp-idf.snapshot.json 记录导入的 27 个递归子模块及全部文件哈希。
+安装入口使用sdk/tools/check_sdk.py 校验全部源码，构建入口校验锁定版本与来源信息，不再把个人仓库 HEAD 当成官方 SDK commit。
 
 导入保留上游源码和许可证；去掉嵌套 .git、.gitignore、.gitattributes、.gitmodules。
 16 个上游文件符号链接已展开为目标文件内容，便于 Windows 普通 Git 检出。
@@ -112,7 +113,7 @@ UI、按键消抖与功能映射、应用任务分发仍待开发。接口用法
 
 ## VS Code 一键编译与烧录
 
-打开仓库根目录，首次先执行本平台的 tools/setup.sh 或 tools/setup.ps1 安装工具链。
+VS Code 打开 sdk 目录；命令行示例从仓库根目录执行。首次先执行本平台的 sdk/tools/setup.sh 或 sdk/tools/setup.ps1 安装工具链。
 C/C++ 扩展（ms-vscode.cpptools）安装在当前开发环境；WSL 使用 VS Code 的 WSL 扩展打开工程。
 Ctrl+Shift+B 默认执行 build + flash：先编译，成功后检查串口；未连接时提示跳过烧录并正常返回。
 串口存在时通过 esptool 烧录，并按默认配置复位运行；编译错误或实际烧录失败仍返回失败。
