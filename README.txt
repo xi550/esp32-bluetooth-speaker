@@ -19,9 +19,8 @@ sdk/
     board/ESP32/board_esp32_speaker/
       CMakeLists.txt                 本产品的源码清单与依赖
       board_esp_proj.c/.h            GPIO/I2S/LCD 初始化编排
-      board_esp_proj_cfg.h           单一引脚定义源
+      board_esp_proj_cfg.h           板级接线与产品参数
       board_app.h                   产品应用入口声明
-      Kconfig.projbuild             LCD 参数、蓝牙名称等配置
       sdkconfig.defaults            首次构建默认配置
       partitions.csv                本产品分区表
       task/board_main.c             app_main，启动顺序
@@ -36,6 +35,26 @@ build/windows/                      Windows 构建输出（不入库）
 参照杰理项目组织产品目录，继续使用 ESP-IDF 官方 CMake/Kconfig 构建机制。
 当前只有一个 board，作为一个原生 IDF 组件编译，公共驱动由该组件列入源码；没有额外的板型选择框架。
 新增本产品源文件时，在 board 的 CMakeLists.txt 中加入。新增硬件能力时可扩展 device/interface。
+
+## 应用代码书写规范
+
+sdk/apps/esp_app/.clang-format 固定应用目录的格式：4 空格缩进、Allman 花括号、控制分支必须带花括号、每行一条语句，长初始化列表展开。官方 SDK 不在此配置范围内。
+使用 clang-format 18 检查所有应用 C/头文件：
+
+```bash
+rg --files sdk/apps/esp_app -g '*.c' -g '*.h' -0 | xargs -0 clang-format --dry-run --Werror
+```
+
+## 配置入口
+
+- board_esp_proj_cfg.h：统一的产品配置入口，包括 GPIO_NUM_x 接线、按键有效电平/上下拉、LCD 开关/尺寸/偏移/反色/总线/方向、蓝牙名称和初始音量。产品配置不再使用 Kconfig.projbuild。
+- sdkconfig.defaults：首次配置的项目默认值；已有 sdkconfig 时，不会覆盖其中已保存的选项。
+- sdk/apps/esp_app/sdkconfig：ESP-IDF 系统配置的当前选择（蓝牙协议栈、Flash、系统任务等）；通过 bash tools/build.sh menuconfig 修改，Windows 使用 tools/build.ps1 -Action menuconfig。
+- build/linux/config/sdkconfig.h：自动生成供 C 代码使用的 CONFIG_* 宏，不手工修改；Windows 使用对应 build/windows 目录。
+
+启动时先检查启用外设的 GPIO 有效性、输出/上下拉能力、Flash 占用和重复分配，再初始化驱动。
+启动配置脚和默认 UART 引脚会告警，仍需按原理图核对模组引出、上电电平及 JTAG 等复用。
+背光和功放控制脚未确认，不分配 GPIO。按键时间阈值在实现事件层时再集中定义。
 
 ## 构建
 
@@ -86,7 +105,7 @@ sdk.lock.json 记录上游版本；sdk/esp-idf.snapshot.json 记录导入的 27 
 框架维护连接、播放器、音频流与音量状态；speaker_service.h 提供查询、状态变化接收、
 播放/暂停/上一首/下一首及音量接口。AVRCP CT 控制手机，TG 接收/同步绝对音量，实习生不实现协议。
 UI、按键消抖与功能映射、应用任务分发仍待开发。接口用法见 docs/HANDOFF.txt。
-音量范围 0..127；0 静音，127 原幅度，初始值由 SPEAKER_INITIAL_VOLUME 配置，默认 40，不写 NVS。
+音量范围 0..127；0 静音，127 原幅度，初始值由 BOARD_INITIAL_VOLUME 配置，默认 40，不写 NVS。
 手机需支持并订阅 AVRCP 绝对音量通知，双向同步才生效；默认初始值不构成硬件最大音量限制。
 编译通过不代表配对、实际播放、显示、按键及长时间运行通过实板验收。
 详见 docs/HANDOFF.txt、docs/HARDWARE.txt 和 docs/VALIDATION.txt。

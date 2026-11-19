@@ -10,9 +10,11 @@ from pathlib import Path
 import shlex
 import subprocess
 import tempfile
+from test_board_config import GPIO_STUB
 
 
 STUBS = {
+    'driver/gpio.h': GPIO_STUB,
     'esp_bt.h': '''#pragma once
 #include "esp_err.h"
 typedef struct { int unused; } esp_bt_controller_config_t;
@@ -66,8 +68,7 @@ int xTaskCreate(void (*fn)(void *), const char *name, unsigned stack, void *arg,
     'sdkconfig.h': '''#define CONFIG_BT_CLASSIC_ENABLED 1
 #define CONFIG_BT_A2DP_ENABLE 1
 #define CONFIG_BT_AVRCP_ENABLED 1
-#define CONFIG_SPEAKER_INITIAL_VOLUME 40
-#define CONFIG_SPEAKER_BT_NAME "host-test"
+#define CONFIG_IDF_TARGET_ESP32 1
 ''',
 }
 
@@ -92,6 +93,8 @@ def main():
             '-Wno-unused-function', '-ffunction-sections', '-fdata-sections',
             '-Wl,--gc-sections', '-I' + str(temp),
             '-I' + str(components / 'esp_common/include'),
+            '-I' + str(components / 'soc/esp32/include'),
+            '-I' + str(root / 'sdk/apps/esp_app/board/ESP32/board_esp32_speaker'),
             '-I' + str(components / 'bt/host/bluedroid/api/include/api'),
             '-I' + str(root / 'sdk/apps/esp_app/interface/include'),
             '-I' + str(root / 'sdk/apps/esp_app/device/include'),

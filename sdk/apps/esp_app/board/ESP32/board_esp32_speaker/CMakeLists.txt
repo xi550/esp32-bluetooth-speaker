@@ -1,7 +1,23 @@
 idf_component_register(
-    SRCS "board_esp_proj.c" "task/board_main.c" "system/board_app.c"
-         "keypad/board_keyevent.c" "ui/board_ui.c"
-         "../../../device/audio_output.c" "../../../device/buttons.c"
-         "../../../device/lcd_hal.c" "../../../interface/speaker_service.c"
-    INCLUDE_DIRS "." "../../../device/include" "../../../interface/include"
-    REQUIRES bt nvs_flash esp_driver_gpio esp_driver_i2s esp_driver_spi esp_lcd)
+    SRCS
+        "board_esp_proj.c"
+        "task/board_main.c"
+        "system/board_app.c"
+        "keypad/board_keyevent.c"
+        "ui/board_ui.c"
+        "../../../device/audio_output.c"
+        "../../../device/buttons.c"
+        "../../../device/lcd_hal.c"
+        "../../../interface/speaker_service.c"
+    INCLUDE_DIRS
+        "."
+        "../../../device/include"
+        "../../../interface/include"
+    REQUIRES
+        bt
+        nvs_flash
+        esp_driver_gpio
+        esp_driver_i2s
+        esp_driver_spi
+        esp_lcd
+)

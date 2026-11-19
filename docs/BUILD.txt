@@ -56,7 +56,8 @@ SDK_PATH 可指定同一导入快照的副本；它仍必须通过整个快照�
 ## 配置与接口
 
 产品目录：sdk/apps/esp_app/board/ESP32/board_esp32_speaker。
-引脚在 board_esp_proj_cfg.h，LCD/蓝牙选项在 Kconfig.projbuild，分区表在 partitions.csv。
+引脚、LCD 开关与参数、蓝牙名称、初始音量统一在 board_esp_proj_cfg.h 修改；产品 Kconfig.projbuild 已移除。menuconfig 仅用于 ESP-IDF 系统配置，分区表在 partitions.csv。
+已有 sdkconfig 中的旧 CONFIG_SPEAKER_* 项不再控制产品行为；迁移后执行一次 reconfigure，再正常编译。
 sdkconfig.defaults 只提供首次默认值；已有配置 sdk/apps/esp_app/sdkconfig 优先。
 分区表路径为相对应用工程的 board/ESP32/board_esp32_speaker/partitions.csv。
 工具与构建缓存不可跨平台混用；不要让两个平台同时改写同一份 sdkconfig。

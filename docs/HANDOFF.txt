@@ -23,7 +23,7 @@
 |speaker_service_get_state(&state)|线程安全地复制连接、播放、流、采样率、音量及控制结果快照|
 |speaker_service_wait_state(&state, timeout_ms)|一个应用任务接收最新快照；0 轮询，UINT32_MAX 一直等待，超时返回 ESP_ERR_TIMEOUT|
 |speaker_service_control(control)|PLAY、PAUSE、PLAY_PAUSE、PREVIOUS、NEXT；非阻塞提交，同一时刻一个控制请求|
-|speaker_service_set_volume(volume)|0..127，0 静音，127 原幅度；初始值 SPEAKER_INITIAL_VOLUME 默认 40，不写 NVS|
+|speaker_service_set_volume(volume)|0..127，0 静音，127 原幅度；初始值 BOARD_INITIAL_VOLUME 默认 40，不写 NVS|
 |buttons_read(index, &pressed)|0..4 对应 GPIO13/14/27/32/33；原始低有效值，无消抖|
 |lcd_hal_flush(x0,y0,x1,y1,pixels)|坐标右下端点不包含；RGB565 高字节在前；单 UI 任务；阻塞到传输完成|
 |audio_output_*|仅供音频工作任务所有，不允许 UI/按键任务并发调用|

@@ -1,1 +1,1 @@
-/* TODO(intern): self-built renderer, pages, dirty-region refresh via lcd_hal_flush(). */
+/* 实习生待办：通过 lcd_hal_flush() 自行实现绘图、页面和局部刷新。 */

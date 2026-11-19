@@ -76,3 +76,39 @@ SHA256：b7cd7d7c45d4e151f264400a4ed37478b674ff630fbf15b36ce86a8a6d1d7f9d。
 SDK 初始化成功和主机回归通过不等于手机接受播放命令或硬件联调通过。
 下一步先用手机验收连接/播放/音量/断连重连，再接按键和显示。
 未执行 Git 提交、推送或设备写入。原 .vscode/settings.json 修改保留。
+
+
+## 2026-11-19：板级配置整理
+
+- 引脚改为 GPIO_NUM_x，按键逐个定义，驱动使用配置中的有效电平与上下拉。
+- LCD SPI 控制器/时钟/模式、颜色顺序及交换/镜像集中到 board_esp_proj_cfg.h。
+- 产品配置随后按用户要求全部集中到 board_esp_proj_cfg.h；ESP-IDF 系统配置继续使用官方 Kconfig。
+- board_init 在任何驱动初始化前检查启用引脚的有效性、输出/上下拉能力、Flash 占用与冲突；启动配置脚/UART 引脚告警。
+- python3 tools/test_board_config.py：LCD 开关两种情况、非法/重复/Flash/只输入引脚、上下拉能力与原始按键电平检查通过。
+- python3 tools/test_speaker_service.py：已有蓝牙状态、AVRCP、PCM 与音量回归通过。
+- bash tools/build.sh build：WSL 编译与容量检查通过；git diff --check 通过。
+- 当前应用固件 941552 字节，SHA256：ebb6e0d5ddafe1bfe6b7086fb04eb239015e833ff7e2ebdaa20011277ede2a1d。
+- 构建日志：E:\Codex\work\esp32-speaker-board-config-build.log。
+- 未验证实板/屏幕方向/手机兼容性或 Windows 编译；未改现有接线、未指定背光 GPIO、未写设备、未提交 Git。
+
+
+## 2026-11-19：产品配置统一到头文件
+
+- 删除产品 Kconfig.projbuild；LCD 开关/尺寸/偏移/反色、蓝牙名称、初始音量迁入 board_esp_proj_cfg.h，沿用迁移前 sdkconfig 的实际值。
+- 驱动与服务使用 BOARD_* 宏；开关使用 #if 判断 0/1，补回原 Kconfig 的数值范围检查。ESP-IDF 系统配置继续使用官方 Kconfig。
+- python3 tools/test_board_config.py：LCD 启用/关闭及引脚、按键检查通过。
+- python3 tools/test_speaker_service.py：蓝牙状态、控制、PCM 与音量回归通过；测试读取实际产品配置头。
+- bash tools/build.sh reconfigure build：WSL 完整构建通过；重新生成的 sdkconfig/sdkconfig.h 已无 CONFIG_SPEAKER_*。
+- git diff --check：通过。构建日志：E:\Codex\work\esp32-speaker-header-config-build.log。
+- 最新应用 941552 字节，SHA256：95b825b81c2100afa3d1694544e00a8bf3e777efcc15d4f1d9ae318ca465fd92。
+- Windows 编译与实板未验证，未烧录、未提交 Git；此前板级配置整理改动保留。
+
+
+## 2026-11-19：整个 esp_app 书写规范整理
+
+- 检查全部 17 个 C/头文件、2 个 CMakeLists.txt、分区表和默认配置；统一 4 空格、Allman 花括号、展开控制分支/连续语句/结构体，整理长初始化列表。生成的 sdkconfig 不手工排版。
+- 新增仅作用于 esp_app 的 .clang-format，使用 clang-format 18.1.8 执行全部 17 文件的 --dry-run --Werror 检查通过；格式工具仅放在 E:\Codex\work，不增加项目运行依赖。
+- python3 tools/test_board_config.py、python3 tools/test_speaker_service.py、bash tools/build.sh build、git diff --check：通过。
+- 本轮仅整理书写，采样率多层三目改为等价的 if/else；产品配置、接口和行为保持一致。
+- 当前应用 941552 字节，SHA256：fc99282531c7b2c45eb89bbf6e34087676b4c94a11547c230ab17ccda0960410。构建日志：E:\Codex\work\esp32-speaker-app-format-build.log。
+- 未执行实板/手机验收、Windows 编译或 Git 提交；保留此前未提交改动。
