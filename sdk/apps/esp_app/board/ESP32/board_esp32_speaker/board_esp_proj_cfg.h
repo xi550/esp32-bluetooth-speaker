@@ -17,10 +17,13 @@
 /* 固件版本号同时用于构建描述和设备信息页，最多 31 个 ASCII 字符。 */
 #define BOARD_FIRMWARE_VERSION "0.1.0"
 
-/* 蓝牙设备名称与启动时的 PCM 音量：0 为静音，127 保持原始幅度。
- * 手机的绝对音量命令可以覆盖此启动音量。 */
-#define BOARD_BT_NAME        "ESP32-Speaker-Lab"
-#define BOARD_INITIAL_VOLUME 40
+/* 蓝牙设备名称与主音量档位。应用只使用 0～最大档，不接触协议换算。
+ * 最大档对应原始 PCM 幅度；默认 16/50 约为原启动音量，手机可覆盖。
+ * 最大档支持 1～127，步长为每次音量加减的档数，不写 NVS。 */
+#define BOARD_BT_NAME            "ESP32-Speaker-Lab"
+#define BOARD_MASTER_VOL_MAX     50
+#define BOARD_MASTER_VOL_DEFAULT 16
+#define BOARD_MASTER_VOL_STEP    1
 
 /* I2S Philips 格式、PCM16 立体声：两块 MAX98357A 共用 BCLK/WS/DIN。
  * 左右声道、GAIN 和 SD_MODE 由硬件接线决定，不通过 GPIO 软件控制。 */
@@ -54,9 +57,8 @@
 #define BOARD_KEY_LONG_MS     600
 #define BOARD_KEY_HOLD_MS     150
 
-/* 单双击间隔及调节步长；音量和亮度均使用百分比。 */
+/* 单双击间隔及亮度步长；音量步长使用上面的主音量档位配置。 */
 #define BOARD_UI_DOUBLE_CLICK_MS 300
-#define BOARD_UI_VOLUME_STEP     5
 #define BOARD_UI_BRIGHTNESS_STEP 10
 /* 100Hz 系统下使用 30ms 调度，避免 33ms 被轮询粒度推迟至 40ms。
  * 这是局部刷新约 30 帧的调度目标，实际帧率仍需实测。 */

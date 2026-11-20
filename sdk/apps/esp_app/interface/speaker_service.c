@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdatomic.h>
 #include "speaker_service.h"
+#include "master_volume.h"
 #include "speaker_service_state.h"
 #include "board_esp_proj_cfg.h"
 #include "audio_output.h"
@@ -28,6 +29,13 @@
 #define TL_CAPABILITIES 0
 #define TL_NOTIFICATION 1
 #define TL_PLAY_STATUS  2
+
+_Static_assert(BOARD_MASTER_VOL_MAX >= 1 && BOARD_MASTER_VOL_MAX <= 127,
+    "Master volume maximum must be 1..127");
+_Static_assert(BOARD_MASTER_VOL_DEFAULT >= 0 && BOARD_MASTER_VOL_DEFAULT <= BOARD_MASTER_VOL_MAX,
+    "Default master volume is out of range");
+_Static_assert(BOARD_MASTER_VOL_STEP >= 1 && BOARD_MASTER_VOL_STEP <= BOARD_MASTER_VOL_MAX,
+    "Master volume step is out of range");
 
 typedef struct
 {
@@ -92,6 +100,9 @@ static void unlock_state(void)
 
 static void publish_state(void)
 {
+    /* 所有本地及手机状态出口统一换算；应用只读档位和显示值。 */
+    state.master_vol = (uint8_t)((state.volume * BOARD_MASTER_VOL_MAX + 63) / 127);
+    state.volume_percent = (uint8_t)((state.volume * 100 + 63) / 127);
     if (memcmp(&state, &published_state, sizeof(state)) != 0)
     {
         published_state = state;
@@ -130,6 +141,19 @@ esp_err_t speaker_service_wait_state(speaker_state_t *out, uint32_t timeout_ms)
     return xQueueReceive(state_queue, out, ticks) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
+/* 调用方持有状态锁；不发送协议命令，避免在锁内阻塞蓝牙队列。 */
+static void set_volume_locked(uint8_t volume)
+{
+    bool changed = state.volume != volume;
+    state.volume = volume;
+    atomic_store(&pcm_volume, volume);
+    if (changed)
+    {
+        volume_local_pending = true;
+    }
+    publish_state();
+}
+
 esp_err_t speaker_service_set_volume(uint8_t volume)
 {
     if (volume > 127)
@@ -141,19 +165,71 @@ esp_err_t speaker_service_set_volume(uint8_t volume)
         return ESP_ERR_INVALID_STATE;
     }
     lock_state();
-    bool changed = state.volume != volume;
-    state.volume = volume;
-    atomic_store(&pcm_volume, volume);
-    if (changed)
-    {
-        volume_local_pending = true;
-    }
-    if (changed)
-    {
-        publish_state();
-    }
+    set_volume_locked(volume);
     unlock_state();
     return ESP_OK;
+}
+
+static uint8_t master_to_volume(int vol)
+{
+    return (uint8_t)((vol * 127 + BOARD_MASTER_VOL_MAX / 2) / BOARD_MASTER_VOL_MAX);
+}
+
+esp_err_t set_master_vol(int vol)
+{
+    if (vol < 0 || vol > BOARD_MASTER_VOL_MAX)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return speaker_service_set_volume(master_to_volume(vol));
+}
+
+esp_err_t get_master_vol(uint8_t *vol)
+{
+    if (!vol)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!atomic_load(&ready))
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    lock_state();
+    *vol = state.master_vol;
+    unlock_state();
+    return ESP_OK;
+}
+
+static esp_err_t adjust_master_vol(int delta)
+{
+    if (!atomic_load(&ready))
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    /* 读取、加减及写入在同一把锁内，多个任务同时调节也不会丢步长。 */
+    lock_state();
+    int vol = state.master_vol + delta;
+    if (vol < 0)
+    {
+        vol = 0;
+    }
+    else if (vol > BOARD_MASTER_VOL_MAX)
+    {
+        vol = BOARD_MASTER_VOL_MAX;
+    }
+    set_volume_locked(master_to_volume(vol));
+    unlock_state();
+    return ESP_OK;
+}
+
+esp_err_t master_vol_up(void)
+{
+    return adjust_master_vol(BOARD_MASTER_VOL_STEP);
+}
+
+esp_err_t master_vol_down(void)
+{
+    return adjust_master_vol(-BOARD_MASTER_VOL_STEP);
 }
 
 esp_err_t speaker_service_control(speaker_control_t control)
@@ -690,10 +766,11 @@ esp_err_t speaker_service_start(void)
     {
         return ESP_ERR_NO_MEM;
     }
-    state.volume = BOARD_INITIAL_VOLUME;
+    state.volume = master_to_volume(BOARD_MASTER_VOL_DEFAULT);
     atomic_store(&pcm_volume, state.volume);
+    publish_state();
+    /* 默认档为零时快照可能与静态初值相同，仍保证首个消费者有初始状态。 */
     xQueueOverwrite(state_queue, &state);
-    published_state = state;
     if (xTaskCreate(audio_worker, "audio_tx", 4096, NULL, 5, NULL) != pdPASS ||
         xTaskCreate(control_worker, "speaker_ctl", 3072, NULL, 4, NULL) != pdPASS)
     {

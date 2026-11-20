@@ -13,6 +13,7 @@ esp_err_t lvgl_port_start(void);
 esp_err_t lvgl_port_update(const speaker_ui_state_t *state);
 
 /* 框架按键分发任务投递按下和方向/音量连发；确认只投递按下，单双击由 UI 判定。
+ * 音量键只用于显示浮层，业务必须在按键分支执行；不会生成调音量动作。
  * 同一个任务按发生顺序投递，满队列返回 ESP_ERR_NOT_FINISHED。 */
 esp_err_t lvgl_port_input(speaker_ui_key_t key);
 /* 框架分发使用消抖时刻；重试沿用原值，避免队列等待改变单双击间隔。

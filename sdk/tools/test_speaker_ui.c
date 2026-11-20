@@ -112,7 +112,7 @@ int main(void)
     lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(display, buffer, NULL, sizeof(buffer), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush_frame);
-    speaker_ui_config_t config = {.double_click_ms = 300, .volume_step = 5, .brightness_step = 10};
+    speaker_ui_config_t config = {.double_click_ms = 300, .brightness_step = 10};
     assert(!speaker_ui_init(NULL, collect_action, NULL));
     assert(speaker_ui_init(&config, collect_action, NULL));
     speaker_ui_state_t sample = {
@@ -162,13 +162,14 @@ int main(void)
     {
         show_page(target);
         unsigned old_focus = home_focus;
+        unsigned old_actions = action_count;
         key(SPEAKER_UI_KEY_VOLUME_UP);
         assert(page == target && home_focus == old_focus);
-        assert(last_action.type == SPEAKER_UI_VOLUME && last_action.delta == 5);
+        assert(action_count == old_actions);
         assert(state.volume_percent == 40);
         assert(!lv_obj_has_flag(volume_popup, LV_OBJ_FLAG_HIDDEN));
         key(SPEAKER_UI_KEY_VOLUME_DOWN);
-        assert(last_action.delta == -5);
+        assert(action_count == old_actions);
         advance(1200);
         assert(lv_obj_has_flag(volume_popup, LV_OBJ_FLAG_HIDDEN));
     }

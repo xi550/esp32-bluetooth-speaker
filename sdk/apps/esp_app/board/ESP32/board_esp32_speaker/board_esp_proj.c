@@ -19,7 +19,6 @@ _Static_assert(BOARD_LCD_HEIGHT >= 1 && BOARD_LCD_HEIGHT <= 320, "LCD height mus
 _Static_assert(BOARD_LCD_X_GAP >= 0 && BOARD_LCD_X_GAP <= 320, "LCD X offset must be 0..320");
 _Static_assert(BOARD_LCD_Y_GAP >= 0 && BOARD_LCD_Y_GAP <= 320, "LCD Y offset must be 0..320");
 
-_Static_assert(BOARD_INITIAL_VOLUME >= 0 && BOARD_INITIAL_VOLUME <= 127, "Volume must be 0..127");
 _Static_assert(
     sizeof(BOARD_BT_NAME) > 1 && sizeof(BOARD_BT_NAME) <= 249, "BT name must be 1..248 bytes");
 

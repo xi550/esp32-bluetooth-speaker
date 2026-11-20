@@ -8,8 +8,8 @@
 2. 核实模组为经典 ESP32、Flash 容量和硬件接线。先完成默认固件启动，确认日志无初始化失败；手机可发现并配对。
 3. 用立体声测试音源验证音频、44.1/48kHz 切换、两块功放左右声道选择及断连重连。记录协商格式、队列溢出、堆和任务栈余量。不得以编译通过替代硬件验收。
 4. 按键扫描、消抖、长按和连发已由 keypad/board_keyevent.c 实现。实习生在 system/board_app.c 的 app_key_event 中使用 switch(event) 和 KRS/KRH 等事件处理功能，不再编写 GPIO 扫描。物理映射和时序在 board_esp_proj_cfg.h 配置；确认键单双击仍由 UI 判定。
-5. UI 页面由框架实现，启用 LCD 后启动顺序会自动创建唯一 UI 任务。框架在 app_start 自动创建扫描及按键分发任务，实习生只创建功能业务任务，不创建第二个 LVGL 任务，不直接访问 LVGL 控件。
-6. 一个应用任务接收 speaker_service_wait_state 状态、lvgl_port_wait_action 操作，调用已有播放/音量接口或背光能力，然后用 lvgl_port_update 回传真实状态。AVRCP CT/TG、PCM 数字缩放及绝对音量同步由服务维护。
+5. UI 页面由框架实现，启用 LCD 后启动顺序会自动创建唯一 UI 任务。框架在 app_start 自动创建扫描及按键分发任务，框架同时启动音量示例业务任务，实习生在这个任务扩展功能，不创建第二个 LVGL 任务，不直接访问 LVGL 控件。
+6. 音量示例的 app_business_task 已接收 speaker_service_wait_state 状态、lvgl_port_wait_action 操作并回传完整 UI 快照；音量加减已接通。实习生在 app_business_task 的动作接收处扩展，完成播放、切歌及亮度等功能，不另建消费者抢读队列。AVRCP CT/TG、PCM 数字缩放及绝对音量同步由服务维护。
 7. 核实 LCD 窗口偏移、方向、反色和接线后启用 BOARD_LCD_ENABLE。先做色条诊断再验证页面；不要用编译通过代替实物显示验收。背光已分配 GPIO16、BLK 高有效；通过 lcd_hal_set_brightness 调节，不直接操作 LEDC。
 8. 联调与压力测试：连续播放至少 30 分钟、反复断连、暂停/恢复、快速按键及 LCD 刷新同时进行；记录音频中断、堆变化与最大栈用量。
 
@@ -17,13 +17,16 @@
 
 |接口|约定|
 |---|---|
-|app_start|BSP/服务及已启用的 UI 启动后调用；自动创建扫描与按键分发任务，失败返回错误；实习生在此接入功能业务任务|
+|app_start|BSP/服务及已启用的 UI 启动后调用；自动创建扫描与按键分发任务，失败返回错误；同时启动 UI 音量示例业务任务，实习生在现有任务内扩展|
 |board_init|启动 GPIO/I2S；按配置启动 LCD，失败终止启动|
 |speaker_service_start|BSP 后调用一次；创建音频任务与经典蓝牙接收服务|
 |speaker_service_get_state(&state)|线程安全地复制连接、播放、流、采样率、音量及控制结果快照|
 |speaker_service_wait_state(&state, timeout_ms)|一个应用任务接收最新快照；0 轮询，UINT32_MAX 一直等待，超时返回 ESP_ERR_TIMEOUT|
 |speaker_service_control(control)|PLAY、PAUSE、PLAY_PAUSE、PREVIOUS、NEXT；非阻塞提交，同一时刻一个控制请求|
-|speaker_service_set_volume(volume)|0..127，0 静音，127 原幅度；初始值 BOARD_INITIAL_VOLUME 默认 40，不写 NVS|
+|master_vol_up() / master_vol_down()|按 cfg 主音量步长加减，到上下界自动停止；无需应用换算|
+|set_master_vol(vol)|设置 0..BOARD_MASTER_VOL_MAX 档，越界返回错误；默认最大 50、启动 16、步长 1|
+|get_master_vol(&vol)|读取当前主音量档位，手机上报时也由框架更新|
+|speaker_service_set_volume(volume)|仅底层协议兼容接口，0..127；普通应用使用 master_volume.h|
 |buttons_read(index, &pressed)|底层原始电平接口；应用使用框架事件，不需要调用|
 |board_keys_start()|app_start 内自动调用，创建扫描任务与事件队列，不重复调用|
 |board_keys_wait(&event, timeout_ms)|由默认按键分发任务消费；event.code 为 KRS/KRH 等编码，event.time_ms 为消抖时刻，其他任务不要抢读|
@@ -52,7 +55,7 @@ if (speaker_service_wait_state(&state, 1000) == ESP_OK) {
 }
 esp_err_t err = speaker_service_control(SPEAKER_CONTROL_PLAY_PAUSE);
 /* err == ESP_ERR_NOT_FINISHED 时等待上一条完成，不循环忙等。 */
-err = speaker_service_set_volume(40);
+err = set_master_vol(16);
 ```
 
 软件回归：python3 sdk/tools/test_speaker_service.py（需要主机 C 编译器，无设备访问）。临时文件默认使用 E:\Codex\work，WSL 使用 /mnt/e/Codex/work；其他环境显式传 --work-dir。
@@ -78,7 +81,7 @@ LVGL 通过 idf_component.yml 和 dependencies.lock 固定版本及组件哈希�
 首次构建需要联网下载，不修改 sdk/esp-idf。LVGL 功能裁剪统一在 ui/lv_conf.h，
 按键映射、单双击阈值、步长、刷新周期和缓存行数在 board_esp_proj_cfg.h。
 
-应用侧只包含 lvgl_port.h；以下是分发关系，不是已经接通的业务：
+应用侧只包含 lvgl_port.h；音量加减及真实状态回传已由 board_app.c 示例接通；下面仍是其他动作的接入参考：
 
 ```c
 /* 按键已由框架接入，不需要业务任务重复调用 lvgl_port_input。 */
@@ -98,10 +101,6 @@ if (lvgl_port_wait_action(&action, 0) == ESP_OK)
             break;
         case SPEAKER_UI_NEXT:
             result = speaker_service_control(SPEAKER_CONTROL_NEXT);
-            break;
-        case SPEAKER_UI_VOLUME:
-            /* 读取服务当前音量，转换为百分比，加 action.delta 后限制到 0..100，
-             * 再转换回 0..127 调用 speaker_service_set_volume。 */
             break;
         case SPEAKER_UI_BRIGHTNESS:
         {
@@ -127,9 +126,10 @@ if (lvgl_port_wait_action(&action, 0) == ESP_OK)
 }
 ```
 
-音量转换：percent = (volume * 100 + 63) / 127；volume = (percent * 127 + 50) / 100。
-不要使用 UI 中的旧音量计算下一次请求；每次动作读取服务当前值，避免快速按键丢步长。
-UI 动作中的 delta 是百分比增量：音量 ±5，亮度 ±10。UI 不自行累加显示值。
+主音量接口统一使用 cfg 的档位：BOARD_MASTER_VOL_MAX、BOARD_MASTER_VOL_DEFAULT、BOARD_MASTER_VOL_STEP。
+实习生只调用 master_vol_up/down 或 set_master_vol，不读写协议值或自己换算；头文件为 master_volume.h。
+音量 KRS/KRH 分支直接调用主音量接口；UI 音量输入只显示浮层，不产生调节动作。亮度 delta 仍是百分比增量 ±10。
+服务快照 master_vol 是当前档位，volume_percent 是已算好的显示百分比；直接赋给 UI。
 
 由一个应用任务持有完整 speaker_ui_state_t，合并服务、媒体、歌词和背光数据后更新 UI。
 不要让多个生产者各自投递半份状态，后来的完整快照会覆盖早先字段。
@@ -148,8 +148,8 @@ position_known/duration_known 区分未知值和真实的 0；进度超过时长
 
 BOARD_LCD_ENABLE 默认已改为 1，启动时初始化 LCD 并创建 UI 任务，使用 LVGL 局部刷新。
 窗口偏移、方向和背光仍需实物确认；无屏验证时可设置为 0。
-app_start 已启动按键扫描及默认 UI 输入分发；功能业务仍由实习生接入。未接入业务时主页显示真实的未知状态，
-不会自动播放、假装调整音量或显示预览歌曲。关闭 LCD 时 UI 适配接口返回 ESP_ERR_NOT_SUPPORTED，按键事件仍可在 app_key_event 处理。
+app_start 已启动按键扫描及默认 UI 输入分发；音量业务已接通，其他功能业务由实习生扩展。无歌曲数据时主页保持未知，
+不会自动播放或显示预览歌曲，音量显示服务真实值。关闭 LCD 时 UI 适配接口返回 ESP_ERR_NOT_SUPPORTED，app_key_event 仍直接执行音量加减。
 
 RGB565 使用单个 240×24 行 DMA 缓冲，11,520 字节，无整屏双缓冲。
 适配层完成坐标端点转换、RGB565 字节交换，等 lcd_hal_flush 完成才通知 LVGL 释放缓冲。
@@ -222,12 +222,13 @@ system/board_app.c 已包含实际可用的分发 switch，例如：
 ```c
 case KRS(RKEY_VOL_UP):
 case KRH(RKEY_VOL_UP):
+    error = master_vol_up();
     key = SPEAKER_UI_KEY_VOLUME_UP;
     break;
 ```
 
-默认代码只把方向、确认及音量输入交给 UI，UI 发出动作后仍需实习生调用实际功能接口。
-如果改为在此直接调用音量接口，应替换该分支的 UI 投递，避免与 UI 动作消费重复加音量。
+音量键在 app_key_event 的 KRS/KRH 分支直接调用 master_vol_up/down；成功后仅通知 UI 显示浮层。
+UI 不再发音量动作，不会重复调节；无屏也能直接执行。方向和确认仍交给 UI，其他功能动作提示尚未实现。
 长按 KRL 不再额外执行一次方向/音量动作；KRH 才执行连续调节。
 确认只转发 KRS，不能把 KRL/KRH/KRU/KRLU 当成第二次点击。
 
@@ -236,3 +237,12 @@ case KRH(RKEY_VOL_UP):
 消费者长期停止仍可能耗尽队列，此时明确记录丢失事件错误日志；不保证无限缓存。
 事件保留消抖时刻，默认分发通过 lvgl_port_input_at 重试时不改时间。
 软件验证：python3 sdk/tools/test_keys.py；真实按键抖动、快速双击、持续按住和多键同时按下仍需实板验收。
+
+## 音量示例已接通
+
+默认启用 LCD 时，app_start 自动创建 app_business_task，接收 UI 动作和服务状态。
+app_key_event 的 KRS/KRH 分支直接调用 master_vol_up/down；主音量接口完成档位和协议换算。
+app_refresh_ui 直接使用服务提供的 volume_percent，回传真实连接、播放、音量及背光状态。
+同一分支支持音量加减，手机音量变化也通过服务状态回显。其他动作返回未实现提示。
+不要新建第二个 UI 动作消费者或服务邮箱消费者；在现有应用任务扩展功能和完整 UI 快照。
+独立教程和流程图位于 C:\Users\RSR\Desktop\doc\ESP32音量按键示例流程.md。

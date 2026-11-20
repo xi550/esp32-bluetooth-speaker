@@ -144,7 +144,6 @@ esp_err_t lvgl_port_start(void)
     lv_timer_set_period(lv_display_get_refr_timer(display), BOARD_UI_REFRESH_MS);
     speaker_ui_config_t config = {
         .double_click_ms = BOARD_UI_DOUBLE_CLICK_MS,
-        .volume_step = BOARD_UI_VOLUME_STEP,
         .brightness_step = BOARD_UI_BRIGHTNESS_STEP,
     };
     if (!speaker_ui_init(&config, post_action, NULL))

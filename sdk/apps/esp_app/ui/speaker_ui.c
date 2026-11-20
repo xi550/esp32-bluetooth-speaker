@@ -334,9 +334,9 @@ bool speaker_ui_init(
     const speaker_ui_config_t *config, speaker_ui_action_cb_t callback, void *context)
 {
     if (root || !config || !callback || config->double_click_ms == 0 ||
-        config->double_click_ms > 2000 || config->volume_step == 0 || config->volume_step > 100 ||
-        config->brightness_step == 0 || config->brightness_step > 100 ||
-        !lv_display_get_default() || lv_display_get_horizontal_resolution(NULL) < 240 ||
+        config->double_click_ms > 2000 || config->brightness_step == 0 ||
+        config->brightness_step > 100 || !lv_display_get_default() ||
+        lv_display_get_horizontal_resolution(NULL) < 240 ||
         lv_display_get_vertical_resolution(NULL) < 280)
     {
         return false;
@@ -510,8 +510,7 @@ void speaker_ui_send_key(speaker_ui_key_t key, uint32_t now_ms)
     }
     else if (key == SPEAKER_UI_KEY_VOLUME_UP || key == SPEAKER_UI_KEY_VOLUME_DOWN)
     {
-        int delta = key == SPEAKER_UI_KEY_VOLUME_UP ? settings.volume_step : -settings.volume_step;
-        emit(SPEAKER_UI_VOLUME, delta, now_ms);
+        /* 实体音量键已经执行功能，这里只显示真实音量浮层，不二次发出动作。 */
         volume_visible = true;
         volume_started = now_ms;
         lv_obj_remove_flag(volume_popup, LV_OBJ_FLAG_HIDDEN);

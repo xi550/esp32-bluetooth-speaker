@@ -19,14 +19,13 @@ typedef enum
     SPEAKER_UI_PREVIOUS,
     SPEAKER_UI_PLAY_PAUSE,
     SPEAKER_UI_NEXT,
-    SPEAKER_UI_VOLUME,
     SPEAKER_UI_BRIGHTNESS,
 } speaker_ui_action_type_t;
 
 typedef struct
 {
     speaker_ui_action_type_t type;
-    int delta; /* 音量或亮度的百分比增量；其他动作固定为 0。 */
+    int delta; /* 亮度为百分比增量；其他动作固定为 0。 */
 } speaker_ui_action_t;
 
 typedef struct
@@ -56,7 +55,6 @@ typedef struct
 typedef struct
 {
     uint32_t double_click_ms;
-    uint8_t volume_step;
     uint8_t brightness_step;
 } speaker_ui_config_t;
 
@@ -67,5 +65,6 @@ bool speaker_ui_init(
     const speaker_ui_config_t *config, speaker_ui_action_cb_t callback, void *context);
 bool speaker_ui_set_state(const speaker_ui_state_t *state, uint32_t now_ms);
 bool speaker_ui_state_valid(const speaker_ui_state_t *state);
+/* 音量键输入仅显示浮层，主音量由应用按键分支直接调节。 */
 void speaker_ui_send_key(speaker_ui_key_t key, uint32_t now_ms);
 void speaker_ui_tick(uint32_t now_ms);

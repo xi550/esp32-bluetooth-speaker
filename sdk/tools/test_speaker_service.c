@@ -1,4 +1,13 @@
 /* Compile the real service; only transport and scheduling are fake. */
+#include "board_esp_proj_cfg.h"
+#ifdef TEST_MASTER_MAX
+#undef BOARD_MASTER_VOL_MAX
+#undef BOARD_MASTER_VOL_DEFAULT
+#undef BOARD_MASTER_VOL_STEP
+#define BOARD_MASTER_VOL_MAX TEST_MASTER_MAX
+#define BOARD_MASTER_VOL_DEFAULT 0
+#define BOARD_MASTER_VOL_STEP TEST_MASTER_STEP
+#endif
 #include "../apps/esp_app/interface/speaker_service.c"
 #include <limits.h>
 
@@ -28,6 +37,7 @@ int xQueueSend(QueueHandle_t q, const void *data, TickType_t timeout)
 }
 int xQueueOverwrite(QueueHandle_t q, const void *data)
 {
+    assert(lock_depth == 1); /* 运行期快照发布必须在状态锁内。 */
     assert(q->depth == 1);
     memcpy(q->data, data, q->size); q->count = 1;
     return pdTRUE;
@@ -118,18 +128,81 @@ static void run_control(void)
     assert(!state.control_busy);
 }
 
+/* 档位封装直接运行生产实现，手机协议数值仍保持原精度。 */
+static void check_master_volumes(void)
+{
+    uint8_t vol;
+    assert(get_master_vol(NULL) == ESP_ERR_INVALID_ARG);
+    for (int value = 0; value <= BOARD_MASTER_VOL_MAX; ++value)
+    {
+        assert(set_master_vol(value) == ESP_OK);
+        assert(get_master_vol(&vol) == ESP_OK && vol == value);
+        assert(state.master_vol == value && !lock_depth);
+        assert(state.volume == (value * 127 + BOARD_MASTER_VOL_MAX / 2) / BOARD_MASTER_VOL_MAX);
+        assert(state.volume_percent == (state.volume * 100 + 63) / 127);
+        assert(atomic_load(&pcm_volume) == state.volume);
+    }
+    unsigned old = state.volume;
+    assert(set_master_vol(-1) == ESP_ERR_INVALID_ARG);
+    assert(set_master_vol(BOARD_MASTER_VOL_MAX + 1) == ESP_ERR_INVALID_ARG);
+    assert(set_master_vol(INT_MIN) == ESP_ERR_INVALID_ARG);
+    assert(set_master_vol(INT_MAX) == ESP_ERR_INVALID_ARG && state.volume == old);
+    for (int value = 0; value <= BOARD_MASTER_VOL_MAX; ++value)
+    {
+        assert(set_master_vol(value) == ESP_OK && master_vol_up() == ESP_OK);
+        int expected = value + BOARD_MASTER_VOL_STEP;
+        if (expected > BOARD_MASTER_VOL_MAX) expected = BOARD_MASTER_VOL_MAX;
+        assert(state.master_vol == expected && !lock_depth);
+        assert(set_master_vol(value) == ESP_OK && master_vol_down() == ESP_OK);
+        expected = value - BOARD_MASTER_VOL_STEP;
+        if (expected < 0) expected = 0;
+        assert(state.master_vol == expected && !lock_depth);
+    }
+    assert(set_master_vol(0) == ESP_OK && master_vol_down() == ESP_OK && state.volume == 0);
+    assert(set_master_vol(BOARD_MASTER_VOL_MAX) == ESP_OK && master_vol_up() == ESP_OK && state.volume == 127);
+    esp_avrc_tg_cb_param_t tg = {0};
+    tg.conn_stat.connected = true;
+    avrc_tg_cb(ESP_AVRC_TG_CONNECTION_STATE_EVT, &tg);
+    for (int raw = 0; raw <= 127; ++raw)
+    {
+        tg.set_abs_vol.volume = raw;
+        avrc_tg_cb(ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT, &tg);
+        int mapped = (raw * BOARD_MASTER_VOL_MAX + 63) / 127;
+        assert(state.volume == raw && state.master_vol == mapped);
+        assert(state.volume_percent == (raw * 100 + 63) / 127 && !volume_local_pending);
+        assert(get_master_vol(&vol) == ESP_OK && vol == mapped);
+        assert(master_vol_up() == ESP_OK);
+        int expected = mapped + BOARD_MASTER_VOL_STEP;
+        if (expected > BOARD_MASTER_VOL_MAX) expected = BOARD_MASTER_VOL_MAX;
+        assert(state.master_vol == expected);
+        avrc_tg_cb(ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT, &tg);
+        assert(master_vol_down() == ESP_OK);
+        expected = mapped - BOARD_MASTER_VOL_STEP;
+        if (expected < 0) expected = 0;
+        assert(state.master_vol == expected);
+    }
+    tg.conn_stat.connected = false;
+    avrc_tg_cb(ESP_AVRC_TG_CONNECTION_STATE_EVT, &tg);
+}
+
 int main(void)
 {
     speaker_state_t snapshot;
     assert(speaker_service_get_state(&snapshot) == ESP_ERR_INVALID_STATE);
     assert(speaker_service_get_state(NULL) == ESP_ERR_INVALID_ARG);
     assert(speaker_service_set_volume(128) == ESP_ERR_INVALID_ARG);
+    uint8_t master;
+    assert(set_master_vol(0) == ESP_ERR_INVALID_STATE);
+    assert(master_vol_up() == ESP_ERR_INVALID_STATE);
+    assert(master_vol_down() == ESP_ERR_INVALID_STATE);
+    assert(get_master_vol(&master) == ESP_ERR_INVALID_STATE);
     state_lock = (void *)1;
     pcm_queue = xQueueCreate(PCM_DEPTH, sizeof(pcm_block_t));
     state_queue = xQueueCreate(1, sizeof(state));
     control_queue = xQueueCreate(1, sizeof(control_request_t));
     response_queue = xQueueCreate(4, sizeof(control_response_t));
     atomic_store(&ready, true);
+    check_master_volumes();
     assert(speaker_service_control(SPEAKER_CONTROL_PLAY) == ESP_ERR_INVALID_STATE);
     assert(speaker_service_control((speaker_control_t)99) == ESP_ERR_INVALID_ARG);
     connection(ESP_A2D_CONNECTION_STATE_CONNECTED);
@@ -254,6 +327,6 @@ int main(void)
             assert(stereo[0] == sample * (int)gain / 127 && stereo[1] == stereo[0]);
         }
     }
-    puts("PASS: state/reconnect, PCM copy/pause/format/overflow, AVRCP control/reject/timeout/cancel, status retry, volume sync/retry, exhaustive PCM16 gain");
+    puts("PASS: state/reconnect, PCM copy/pause/format/overflow, AVRCP control/reject/timeout/cancel, status retry, master volume levels/steps/phone mapping, volume sync/retry, exhaustive PCM16 gain");
     return 0;
 }

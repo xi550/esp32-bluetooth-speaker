@@ -100,8 +100,10 @@ def main():
             '-I' + str(root / 'sdk/apps/esp_app/device/include'),
             str(root / 'sdk/tools/test_speaker_service.c'), '-o', str(executable),
         ]
-        subprocess.run(command, check=True)
-        subprocess.run([str(executable)], check=True)
+        for max_vol, step in ((50, 1), (1, 1), (127, 7)):
+            subprocess.run(command + ['-DTEST_MASTER_MAX=' + str(max_vol),
+                                      '-DTEST_MASTER_STEP=' + str(step)], check=True)
+            subprocess.run([str(executable)], check=True)
 
 
 if __name__ == '__main__':

@@ -32,7 +32,7 @@ typedef enum
     SPEAKER_CONTROL_NEXT,
 } speaker_control_t;
 
-/* 按值复制的状态快照，不包含借用指针或 SDK 类型；音量为 0～127 的线性增益。 */
+/* 按值复制的状态快照，不包含借用指针或 SDK 类型；应用使用主音量档位和百分比。 */
 typedef struct
 {
     speaker_connection_t connection;
@@ -41,7 +41,9 @@ typedef struct
     bool volume_connected;        /* AVRCP TG 已连接，绝对音量同步仍需手机支持 */
     bool streaming;               /* A2DP 音频流状态，与播放器状态分别维护 */
     uint32_t sample_rate_hz;      /* 协商出支持的音频格式前为 0 */
-    uint8_t volume;               /* 0 为静音，127 保持原始 PCM 幅度 */
+    uint8_t volume;               /* 底层协议值 0～127，业务无需换算。 */
+    uint8_t master_vol;           /* 当前主音量档位，0～BOARD_MASTER_VOL_MAX。 */
+    uint8_t volume_percent;       /* 已换算的显示百分比，应用直接赋给 UI。 */
     esp_err_t volume_sync_result; /* 最近一次 TG 音量通知的提交结果 */
     bool control_busy;
     esp_err_t control_result; /* 最近完成的控制结果：应答、超时或发送错误 */
@@ -63,7 +65,8 @@ esp_err_t speaker_service_wait_state(speaker_state_t *state, uint32_t timeout_ms
  * PLAY_PAUSE 要求播放状态已知；实际播放状态以手机上报事件为准。 */
 esp_err_t speaker_service_control(speaker_control_t control);
 
-/* 无手机连接时也可设置本地音量，不写入持久化存储。
+/* 底层协议音量接口，范围 0～127；普通应用使用 master_volume.h 的档位接口。
+ * 无手机连接时也可设置本地音量，不写入持久化存储。
  * 手机已订阅时，本地变化发送一次 AVRCP TG 通知；手机更新音量时不回发通知。
  * ESP_OK 表示本地增益已设置，协议同步异步进行。
  * 通知提交失败会重试，结果见 volume_sync_result。 */

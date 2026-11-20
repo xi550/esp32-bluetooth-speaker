@@ -62,6 +62,25 @@ static bool initialized, fail_queue, fail_task;
 static TickType_t waited;
 static speaker_ui_key_t last_key;
 static uint32_t last_time;
+static speaker_state_t service;
+static speaker_ui_state_t displayed;
+static esp_err_t get_error, set_error, brightness_error, update_error;
+static unsigned volume_calls, volume_up_calls, volume_down_calls;
+esp_err_t speaker_service_get_state(speaker_state_t *out)
+{ if (get_error) return get_error; *out=service; return ESP_OK; }
+esp_err_t master_vol_up(void)
+{ ++volume_calls; ++volume_up_calls; return set_error; }
+esp_err_t master_vol_down(void)
+{ ++volume_calls; ++volume_down_calls; return set_error; }
+esp_err_t speaker_service_wait_state(speaker_state_t *out, uint32_t timeout)
+{ return ESP_ERR_TIMEOUT; }
+esp_err_t lcd_hal_get_brightness(uint8_t *out)
+{ if (brightness_error) return brightness_error; *out=60; return ESP_OK; }
+esp_err_t lvgl_port_wait_action(speaker_ui_action_t *action, uint32_t timeout)
+{ return ESP_ERR_TIMEOUT; }
+esp_err_t lvgl_port_update(const speaker_ui_state_t *ui)
+{ displayed=*ui; return update_error; }
+
 QueueHandle_t xQueueCreate(unsigned n, unsigned size)
 {
  assert(n==32 && size==sizeof(board_key_event_t));
@@ -115,7 +134,7 @@ int main(void)
  fail_queue=false; fail_task=true;
  assert(board_keys_start()==ESP_ERR_NO_MEM && !events && deletes==1);
  fail_task=false;
- assert(app_start()==ESP_OK && task_calls==3);
+ assert(app_start()==ESP_OK && task_calls==3+BOARD_LCD_ENABLE);
  assert(board_keys_start()==ESP_ERR_INVALID_STATE);
  assert(board_keys_wait(&event,1)==ESP_ERR_TIMEOUT && waited==1);
  assert(board_keys_wait(&event,UINT32_MAX)==ESP_ERR_TIMEOUT && waited==portMAX_DELAY);
@@ -154,11 +173,52 @@ int main(void)
  assert(input_calls==1);
  retries=2; app_key_event(KRH(RKEY_VOL_UP),400);
  assert(input_calls==4 && last_key==SPEAKER_UI_KEY_VOLUME_UP && last_time==400);
+ assert(volume_calls==1 && volume_up_calls==1); /* UI 两次重试不重复加音量。 */
  app_key_event(KRS(RKEY_VOL_DOWN),500); assert(last_key==SPEAKER_UI_KEY_VOLUME_DOWN);
+ assert(volume_calls==2 && volume_down_calls==1);
  app_key_event(KRH(RKEY_UP),600); assert(last_key==SPEAKER_UI_KEY_UP);
  app_key_event(KRH(RKEY_DOWN),700); assert(last_key==SPEAKER_UI_KEY_DOWN);
+ /* 实体按键直接执行功能，长按门限和松手不再调节。 */
+ app_key_event(KRS(RKEY_VOL_UP),710); assert(volume_calls==3 && volume_up_calls==2);
+ app_key_event(KRH(RKEY_VOL_DOWN),720); assert(volume_calls==4 && volume_down_calls==2);
+ unsigned previous_calls=volume_calls, previous_inputs=input_calls;
+ app_key_event(KRL(RKEY_VOL_UP),730); app_key_event(KRU(RKEY_VOL_UP),740);
+ app_key_event(KRLU(RKEY_VOL_DOWN),750);
+ assert(volume_calls==previous_calls && input_calls==previous_inputs);
+ set_error=ESP_FAIL;
+ app_key_event(KRS(RKEY_VOL_UP),760);
+ assert(volume_calls==previous_calls+1 && input_calls==previous_inputs);
+ set_error=ESP_OK;
+ speaker_ui_state_t ui={0};
+ service.volume_percent=32; service.master_vol=16;
+ assert(app_refresh_ui(&ui,ESP_OK)==ESP_OK && displayed.volume_known && displayed.volume_percent==32);
+ assert(displayed.brightness_available && displayed.brightness_percent==60);
+ assert(app_refresh_ui(&ui,ESP_FAIL)==ESP_OK && displayed.volume_percent==32);
+ assert(strstr(displayed.message,"操作失败")!=NULL);
+ get_error=ESP_ERR_INVALID_STATE;
+ assert(app_refresh_ui(&ui,ESP_OK)==ESP_ERR_INVALID_STATE);
+ get_error=ESP_OK;
+ assert(app_refresh_ui(&ui,ESP_ERR_NOT_SUPPORTED)==ESP_OK);
+ assert(strcmp(displayed.message,"示例尚未实现此操作")==0);
+ /* 模拟手机更新：真实服务音量覆盖显示，歌曲字段继续由应用快照保留。 */
+ strcpy(ui.title,"保留曲目"); service.volume=100; service.volume_percent=79; service.master_vol=39;
+ service.connection=SPEAKER_CONNECTED; service.avrcp_connected=true;
+ service.playback=SPEAKER_PLAYBACK_PLAYING;
+ service.volume_sync_result=ESP_FAIL;
+ assert(app_refresh_ui(&ui,ESP_OK)==ESP_OK && displayed.volume_percent==79);
+ assert(displayed.connected && displayed.playing && displayed.control_available);
+ assert(strcmp(displayed.title,"保留曲目")==0 && strstr(displayed.message,"手机同步失败")!=NULL);
+ service.volume_sync_result=ESP_OK; brightness_error=ESP_FAIL;
+ assert(app_refresh_ui(&ui,ESP_OK)==ESP_OK && displayed.message[0]==0 && !displayed.brightness_available);
+ update_error=ESP_FAIL;
+ assert(app_refresh_ui(&ui,ESP_OK)==ESP_FAIL);
+
 #else
- app_key_event(KRS(RKEY_VOL_UP),123); assert(input_calls==0);
+ app_key_event(KRS(RKEY_VOL_UP),123); assert(volume_up_calls==1 && input_calls==0);
+ app_key_event(KRH(RKEY_VOL_UP),124); assert(volume_up_calls==2 && input_calls==0);
+ app_key_event(KRS(RKEY_VOL_DOWN),125); assert(volume_down_calls==1 && input_calls==0);
+ app_key_event(KRH(RKEY_VOL_DOWN),126); assert(volume_down_calls==2 && input_calls==0);
+ app_key_event(KRLU(RKEY_VOL_DOWN),127); assert(volume_calls==4);
 #endif
  return 0;
 }
@@ -168,6 +228,7 @@ int main(void)
             '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
             '-Wno-unused-variable', '-fsanitize=undefined', '-I'+str(temp),
             '-I'+str(board), '-I'+str(app/'device/include'), '-I'+str(app/'ui'),
+            '-I'+str(app/'interface/include'),
             '-I'+str(root/'sdk/esp-idf/components/esp_common/include'),
             '-I'+str(root/'sdk/esp-idf/components/soc/esp32/include'),
             str(source), '-o', str(executable),
@@ -175,7 +236,7 @@ int main(void)
         for lcd in (0, 1):
             subprocess.run(command+['-DBOARD_LCD_ENABLE='+str(lcd)], check=True)
             subprocess.run([str(executable)], check=True)
-    print('PASS: key startup/failures, debounce, short/long/repeat/release, multi-key, clock wrap, queue reserve and UI dispatch (LCD on/off)')
+    print('PASS: key startup/failures, debounce, short/long/repeat/release, multi-key, clock wrap, queue reserve, UI dispatch and volume example/state/errors (LCD on/off)')
 
 
 if __name__ == '__main__':
