@@ -39,6 +39,7 @@ build/windows/                      Windows 构建输出（不入库）
 
 ## 应用代码书写规范
 
+esp_app 的 .h 只放类型、宏及函数声明，函数实现统一放在 .c，不在头文件定义 static inline 函数。
 sdk/apps/esp_app/.clang-format 固定应用目录的格式：4 空格缩进、Allman 花括号、控制分支必须带花括号、每行一条语句，长初始化列表展开。官方 SDK 不在此配置范围内。
 使用 clang-format 18 检查所有应用 C/头文件：
 

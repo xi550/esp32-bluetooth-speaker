@@ -98,7 +98,9 @@ def main():
             '-I' + str(components / 'bt/host/bluedroid/api/include/api'),
             '-I' + str(root / 'sdk/apps/esp_app/interface/include'),
             '-I' + str(root / 'sdk/apps/esp_app/device/include'),
-            str(root / 'sdk/tools/test_speaker_service.c'), '-o', str(executable),
+            str(root / 'sdk/tools/test_speaker_service.c'),
+            str(root / 'sdk/apps/esp_app/interface/speaker_service_state.c'),
+            '-o', str(executable),
         ]
         for max_vol, step in ((50, 1), (1, 1), (127, 7)):
             subprocess.run(command + ['-DTEST_MASTER_MAX=' + str(max_vol),

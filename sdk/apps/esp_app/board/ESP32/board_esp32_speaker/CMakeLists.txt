@@ -11,6 +11,7 @@ idf_component_register(
         "../../../device/buttons.c"
         "../../../device/lcd_hal.c"
         "../../../interface/speaker_service.c"
+        "../../../interface/speaker_service_state.c"
     INCLUDE_DIRS
         "."
         "../../../device/include"
