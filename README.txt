@@ -107,7 +107,7 @@ sdk.lock.json 记录上游版本；esp-idf.snapshot.json 记录导入的 27 个�
 播放/暂停/上一首/下一首及音量接口。AVRCP CT 控制手机，TG 接收/同步绝对音量，实习生不实现协议。
 UI 已实现深海音乐主页、设置、亮度和设备信息，采用 LVGL 9.3.0 单任务与局部刷新。
 按键扫描、消抖和事件分发已由框架实现；system/board_app.c 提供音量加减的完整业务示例及真实状态回传。实习生参考 KRS/KRH 与 UI 动作处理流程接入其他功能。
-媒体元数据/进度尚未接入服务，歌词需独立来源；背光接口 lcd_hal_set_brightness/get_brightness 已实现。接口用法见 docs/HANDOFF.txt。
+服务已自动获取歌名、歌手、时长及播放进度，并通过现有状态快照更新主页；歌词需独立来源。背光接口 lcd_hal_set_brightness/get_brightness 已实现，接口用法见 docs/HANDOFF.txt。
 应用使用 master_volume.h：master_vol_up/down、set_master_vol、get_master_vol。cfg 配置最大 50 档、默认 16 档、步长 1；换算及百分比由框架提供，不写 NVS。
 手机需支持并订阅 AVRCP 绝对音量通知，双向同步才生效；默认初始值不构成硬件最大音量限制。
 编译通过不代表配对、实际播放、显示、按键及长时间运行通过实板验收。

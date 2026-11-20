@@ -82,7 +82,7 @@ static void key_dispatch_task(void *context)
 
 #if BOARD_LCD_ENABLE
 
-/* 应用持有完整 UI 快照；只从服务读取真实状态，歌曲和歌词仍保持未知。
+/* 应用持有完整 UI 快照；从服务读取媒体及播放状态，歌词保留独立数据入口。
  * 后续业务也在这个快照合并数据，不要另建任务覆盖成半份状态。 */
 static esp_err_t app_refresh_ui(speaker_ui_state_t *ui, esp_err_t action_result)
 {
@@ -98,6 +98,12 @@ static esp_err_t app_refresh_ui(speaker_ui_state_t *ui, esp_err_t action_result)
     ui->playback_known = current.playback != SPEAKER_PLAYBACK_UNKNOWN;
     ui->control_available = current.avrcp_connected;
     ui->control_busy = current.control_busy;
+    snprintf(ui->title, sizeof(ui->title), "%s", current.title);
+    snprintf(ui->artist, sizeof(ui->artist), "%s", current.artist);
+    ui->position_known = current.position_known;
+    ui->duration_known = current.duration_known;
+    ui->position_ms = current.position_ms;
+    ui->duration_ms = current.duration_ms;
     ui->volume_known = true;
     ui->volume_percent = current.volume_percent;
     ui->brightness_available = lcd_hal_get_brightness(&ui->brightness_percent) == ESP_OK;

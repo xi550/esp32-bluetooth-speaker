@@ -45,6 +45,12 @@ typedef struct
     uint8_t master_vol;           /* 当前主音量档位，0～BOARD_MASTER_VOL_MAX。 */
     uint8_t volume_percent;       /* 已换算的显示百分比，应用直接赋给 UI。 */
     esp_err_t volume_sync_result; /* 最近一次 TG 音量通知的提交结果 */
+    char title[128];              /* UTF-8 歌名，空字符串表示手机未提供。 */
+    char artist[96];              /* UTF-8 歌手，不包含 SDK 借用指针。 */
+    bool position_known;
+    bool duration_known;
+    uint32_t position_ms; /* 手机报告的进度，框架不自行推算。 */
+    uint32_t duration_ms;
     bool control_busy;
     esp_err_t control_result; /* 最近完成的控制结果：应答、超时或发送错误 */
 } speaker_state_t;

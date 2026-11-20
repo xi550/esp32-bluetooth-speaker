@@ -29,6 +29,10 @@
 #define TL_CAPABILITIES 0
 #define TL_NOTIFICATION 1
 #define TL_PLAY_STATUS  2
+#define TL_METADATA     3
+#define TL_TRACK_CHANGE 4
+#define MEDIA_ATTRIBUTES                                                                           \
+    (ESP_AVRC_MD_ATTR_TITLE | ESP_AVRC_MD_ATTR_ARTIST | ESP_AVRC_MD_ATTR_PLAYING_TIME)
 
 _Static_assert(BOARD_MASTER_VOL_MAX >= 1 && BOARD_MASTER_VOL_MAX <= 127,
     "Master volume maximum must be 1..127");
@@ -76,6 +80,15 @@ static speaker_state_t published_state;
 static unsigned session;
 static bool volume_subscribed;
 static bool play_status_supported;
+static bool track_change_supported;
+static bool track_notification_requested;
+static bool metadata_requested;
+static uint8_t metadata_pending;
+static TickType_t metadata_started;
+static char metadata_title[128];
+static char metadata_artist[96];
+static bool metadata_duration_known;
+static uint32_t metadata_duration;
 static bool play_query_pending;
 static uint8_t volume_reported;
 static TickType_t play_query_started;
@@ -289,6 +302,98 @@ static void query_play_status(void)
     query_requested = true;
 }
 
+/* SDK 文本不保证以零结尾；只复制容量内的合法 UTF-8 完整字符。
+ * 遇到非法编码或嵌入零即结束，不能把半个汉字传给 UI。 */
+static void speaker_copy_text(char *out, size_t capacity, const uint8_t *text, int length)
+{
+    size_t used = 0;
+    while (text && length > 0 && used < (size_t)length && text[used])
+    {
+        uint8_t first = text[used];
+        unsigned bytes = 0;
+        if (first < 0x80)
+        {
+            bytes = 1;
+        }
+        else if (first >= 0xc2 && first <= 0xdf)
+        {
+            bytes = 2;
+        }
+        else if (first >= 0xe0 && first <= 0xef)
+        {
+            bytes = 3;
+        }
+        else if (first >= 0xf0 && first <= 0xf4)
+        {
+            bytes = 4;
+        }
+        if (!bytes || used + bytes >= capacity || used + bytes > (size_t)length)
+        {
+            break;
+        }
+        uint32_t point = first & (bytes == 1 ? 0x7f : (0x7f >> bytes));
+        bool valid = true;
+        for (unsigned i = 1; i < bytes; ++i)
+        {
+            uint8_t next = text[used + i];
+            valid = valid && (next & 0xc0) == 0x80;
+            point = (point << 6) | (next & 0x3f);
+        }
+        if (!valid || (bytes == 2 && point < 0x80) || (bytes == 3 && point < 0x800) ||
+            (bytes == 4 && point < 0x10000) || (point >= 0xd800 && point <= 0xdfff) ||
+            point > 0x10ffff)
+        {
+            break;
+        }
+        memcpy(out + used, text + used, bytes);
+        used += bytes;
+    }
+    out[used] = '\0';
+}
+
+static bool speaker_parse_duration(const uint8_t *text, int length, uint32_t *value)
+{
+    if (!text || length <= 0 || length > 10)
+    {
+        return false;
+    }
+    uint64_t parsed = 0;
+    for (int i = 0; i < length; ++i)
+    {
+        if (text[i] < '0' || text[i] > '9')
+        {
+            return false;
+        }
+        parsed = parsed * 10 + text[i] - '0';
+    }
+    if (parsed == 0 || parsed >= UINT32_MAX)
+    {
+        return false;
+    }
+    *value = (uint32_t)parsed;
+    return true;
+}
+
+/* 属性分批回调，收齐或超时后一次合并；省略的歌手不会沿用上一首。 */
+static void apply_metadata(void)
+{
+    if (strcmp(state.title, metadata_title) != 0)
+    {
+        state.position_known = false;
+        state.duration_known = false;
+        state.position_ms = 0;
+        state.duration_ms = 0;
+        query_play_status();
+    }
+    memcpy(state.title, metadata_title, sizeof(state.title));
+    memcpy(state.artist, metadata_artist, sizeof(state.artist));
+    if (metadata_duration_known)
+    {
+        state.duration_known = true;
+        state.duration_ms = metadata_duration;
+    }
+}
+
 /* 运行期 SDK 请求只由服务任务提交；回调仅复制状态并设置待处理标记。
  * SDK 队列满时，不会让回调或持有状态锁的界面任务陷入死锁。
  * 相同请求通过标记合并。 */
@@ -300,10 +405,26 @@ static void protocol_step(void)
     bool scan = scan_requested;
     bool caps = state.avrcp_connected && capabilities_requested;
     bool notify = state.avrcp_connected && notification_requested && play_status_supported;
+    bool track_notify =
+        state.avrcp_connected && track_notification_requested && track_change_supported;
     TickType_t now = xTaskGetTickCount();
     bool expired = now - play_query_started >= pdMS_TO_TICKS(2000);
     bool query = state.avrcp_connected && state.connection == SPEAKER_CONNECTED &&
-        (query_requested || expired) && (!play_query_pending || expired);
+        (query_requested || now - play_query_started >= pdMS_TO_TICKS(1000)) &&
+        (!play_query_pending || expired);
+    if (metadata_pending && now - metadata_started >= pdMS_TO_TICKS(2000))
+    {
+        if (!metadata_requested)
+        {
+            apply_metadata();
+        }
+        metadata_pending = 0;
+    }
+    /* 曲目通知即时触发；10 秒轮询兜底，缺少属性的响应最多等 2 秒。
+     * 元数据回调没有事务标签，串行请求期间曲目变更会丢弃旧响应。 */
+    bool metadata = state.avrcp_connected && state.connection == SPEAKER_CONNECTED &&
+        (metadata_requested || now - metadata_started >= pdMS_TO_TICKS(10000)) &&
+        (!metadata_pending || now - metadata_started >= pdMS_TO_TICKS(2000));
     bool interim = state.volume_connected && volume_interim_pending;
     bool changed = state.volume_connected && volume_subscribed && volume_local_pending &&
         state.volume != volume_reported;
@@ -319,6 +440,19 @@ static void protocol_step(void)
     if (notify)
     {
         notification_requested = false;
+    }
+    if (track_notify)
+    {
+        track_notification_requested = false;
+    }
+    if (metadata)
+    {
+        metadata_requested = false;
+        metadata_pending = MEDIA_ATTRIBUTES;
+        memset(metadata_title, 0, sizeof(metadata_title));
+        memset(metadata_artist, 0, sizeof(metadata_artist));
+        metadata_duration_known = false;
+        metadata_started = now;
     }
     if (query)
     {
@@ -338,6 +472,11 @@ static void protocol_step(void)
     esp_err_t notify_err = notify ? esp_avrc_ct_send_register_notification_cmd(
                                         TL_NOTIFICATION, ESP_AVRC_RN_PLAY_STATUS_CHANGE, 0)
                                   : ESP_OK;
+    esp_err_t track_err = track_notify
+        ? esp_avrc_ct_send_register_notification_cmd(TL_TRACK_CHANGE, ESP_AVRC_RN_TRACK_CHANGE, 0)
+        : ESP_OK;
+    esp_err_t metadata_err =
+        metadata ? esp_avrc_ct_send_metadata_cmd(TL_METADATA, MEDIA_ATTRIBUTES) : ESP_OK;
     esp_err_t query_err = query ? esp_avrc_ct_send_get_play_status_cmd(TL_PLAY_STATUS) : ESP_OK;
     esp_avrc_rn_param_t param = {.volume = volume};
     esp_err_t volume_err = (interim || changed)
@@ -360,6 +499,15 @@ static void protocol_step(void)
         if (notify_err != ESP_OK)
         {
             notification_requested = true;
+        }
+        if (track_err != ESP_OK)
+        {
+            track_notification_requested = true;
+        }
+        if (metadata_err != ESP_OK)
+        {
+            metadata_pending = 0;
+            metadata_requested = true;
         }
         if (query_err != ESP_OK)
         {
@@ -391,10 +539,10 @@ static void protocol_step(void)
 }
 
 /* 只有此任务发送 AVRCP 透传命令，按下与释放成对处理。
- * 事务标签 3～15 循环使用，0～2 保留给能力查询和状态操作。 */
+ * 事务标签 5～15 循环使用，0～4 保留给能力、状态和媒体操作。 */
 static esp_err_t send_key(const control_request_t *request, uint8_t key_state)
 {
-    static uint8_t next_tl = 3;
+    static uint8_t next_tl = 5;
     lock_state();
     if (!control_connected(request->session))
     {
@@ -404,7 +552,7 @@ static esp_err_t send_key(const control_request_t *request, uint8_t key_state)
     uint8_t tl = next_tl++;
     if (next_tl > 15)
     {
-        next_tl = 3;
+        next_tl = 5;
     }
     unlock_state();
     esp_err_t err = esp_avrc_ct_send_passthrough_cmd(tl, request->key, key_state);
@@ -556,6 +704,11 @@ static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *p)
         state.avrcp_connected = p->conn_stat.connected;
         ++session;
         play_status_supported = false;
+        track_change_supported = false;
+        track_notification_requested = false;
+        metadata_pending = 0;
+        metadata_requested = state.avrcp_connected;
+        speaker_state_clear_media(&state);
         play_query_pending = false;
         notification_requested = false;
         capabilities_requested = state.avrcp_connected;
@@ -571,16 +724,87 @@ static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *p)
         }
         break;
     case ESP_AVRC_CT_GET_RN_CAPABILITIES_RSP_EVT:
+        if (!state.avrcp_connected)
+        {
+            break;
+        }
+        track_change_supported = esp_avrc_rn_evt_bit_mask_operation(
+            ESP_AVRC_BIT_MASK_OP_TEST, &p->get_rn_caps_rsp.evt_set, ESP_AVRC_RN_TRACK_CHANGE);
+        track_notification_requested = track_change_supported;
         play_status_supported = esp_avrc_rn_evt_bit_mask_operation(
             ESP_AVRC_BIT_MASK_OP_TEST, &p->get_rn_caps_rsp.evt_set, ESP_AVRC_RN_PLAY_STATUS_CHANGE);
         register_play_notification();
         break;
     case ESP_AVRC_CT_PLAY_STATUS_RSP_EVT:
+        if (!state.avrcp_connected || state.connection != SPEAKER_CONNECTED || !play_query_pending)
+        {
+            break;
+        }
         play_query_pending = false;
+        if (query_requested)
+        {
+            /* 曲目刚切换，丢弃切换前尚未完成的查询，稍后重新请求。 */
+            break;
+        }
         speaker_state_playback(&state, playback_status(p->play_status_rsp.play_status));
+        state.position_known = p->play_status_rsp.song_position != UINT32_MAX;
+        state.position_ms = state.position_known ? p->play_status_rsp.song_position : 0;
+        if (p->play_status_rsp.song_length != 0 && p->play_status_rsp.song_length != UINT32_MAX)
+        {
+            state.duration_known = true;
+            state.duration_ms = p->play_status_rsp.song_length;
+        }
+        /* 状态响应未给时长时，保留本曲目已取得的元数据时长；切歌会统一清空。 */
+        break;
+    case ESP_AVRC_CT_METADATA_RSP_EVT:
+        if (!state.avrcp_connected || state.connection != SPEAKER_CONNECTED ||
+            !(metadata_pending & p->meta_rsp.attr_id))
+        {
+            break;
+        }
+        metadata_pending &= ~p->meta_rsp.attr_id;
+        if (metadata_requested)
+        {
+            /* 上一首的剩余属性仍会回调，但不能写进新曲目的快照。 */
+            break;
+        }
+        if (p->meta_rsp.attr_id == ESP_AVRC_MD_ATTR_TITLE)
+        {
+            speaker_copy_text(metadata_title,
+                sizeof(metadata_title),
+                p->meta_rsp.attr_text,
+                p->meta_rsp.attr_length);
+        }
+        else if (p->meta_rsp.attr_id == ESP_AVRC_MD_ATTR_ARTIST)
+        {
+            speaker_copy_text(metadata_artist,
+                sizeof(metadata_artist),
+                p->meta_rsp.attr_text,
+                p->meta_rsp.attr_length);
+        }
+        else if (p->meta_rsp.attr_id == ESP_AVRC_MD_ATTR_PLAYING_TIME)
+        {
+            metadata_duration_known = speaker_parse_duration(
+                p->meta_rsp.attr_text, p->meta_rsp.attr_length, &metadata_duration);
+        }
+        if (!metadata_pending)
+        {
+            apply_metadata();
+        }
         break;
     case ESP_AVRC_CT_CHANGE_NOTIFY_EVT:
-        if (p->change_ntf.event_id == ESP_AVRC_RN_PLAY_STATUS_CHANGE)
+        if (!state.avrcp_connected || state.connection != SPEAKER_CONNECTED)
+        {
+            break;
+        }
+        if (p->change_ntf.event_id == ESP_AVRC_RN_TRACK_CHANGE)
+        {
+            speaker_state_clear_media(&state);
+            metadata_requested = true;
+            query_play_status();
+            track_notification_requested = track_change_supported;
+        }
+        else if (p->change_ntf.event_id == ESP_AVRC_RN_PLAY_STATUS_CHANGE)
         {
             speaker_state_playback(&state, playback_status(p->change_ntf.event_parameter.playback));
             register_play_notification();
@@ -710,6 +934,9 @@ static void a2dp_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *p)
             atomic_store(&sample_rate, 0);
             atomic_fetch_add(&epoch, 1);
             ++session;
+            metadata_pending = 0;
+            metadata_requested = false;
+            track_notification_requested = false;
             if (state.connection == SPEAKER_DISCONNECTED)
             {
                 volume_subscribed = false;
@@ -723,6 +950,8 @@ static void a2dp_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *p)
         else
         {
             query_play_status();
+            metadata_requested = state.avrcp_connected;
+            track_notification_requested = state.avrcp_connected && track_change_supported;
         }
         ESP_LOGI("a2dp", "Connection: %d", p->conn_stat.state);
     }

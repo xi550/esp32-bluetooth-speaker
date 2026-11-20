@@ -81,6 +81,7 @@
 #define BOARD_LCD_CS           GPIO_NUM_21
 #define BOARD_LCD_DC           GPIO_NUM_19
 #define BOARD_LCD_RST          GPIO_NUM_17
+#define BOARD_LCD_BL_PIN       GPIO_NUM_16
 #define BOARD_LCD_SPI_HOST     SPI2_HOST
 #define BOARD_LCD_SPI_CLOCK_HZ (40 * 1000 * 1000)
 #define BOARD_LCD_SPI_MODE     0
@@ -88,13 +89,6 @@
 #define BOARD_LCD_SWAP_XY      false
 #define BOARD_LCD_MIRROR_X     false
 #define BOARD_LCD_MIRROR_Y     false
-
-/* GPIO16 分配为背光 PWM 控制信号，不作为 LED 大电流供电端。
- * 卖家说明 BLK 为 GPIO 控制输入，低电平关闭、默认打开，采用高有效配置。
- * 卖家未提供 PWM 频率范围，20kHz 的实际调光效果仍需实板验证。
- * PWM 占用 LEDC 低速组的定时器 0、通道 0，其他模块不要复用。
- * 初始化先关闭背光，UI 首帧发送完成后设置启动亮度。 */
-#define BOARD_LCD_BL_PIN          GPIO_NUM_16
 #define BOARD_LCD_BL_ACTIVE_LEVEL 1
 #define BOARD_LCD_BL_PWM_HZ       20000
 #define BOARD_LCD_BL_PWM_BITS     10

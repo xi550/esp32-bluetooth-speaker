@@ -5,11 +5,22 @@
 #include "speaker_service.h"
 
 /* 不依赖硬件的状态和音频运算，与主机回归检查共用。 */
+static inline void speaker_state_clear_media(speaker_state_t *s)
+{
+    memset(s->title, 0, sizeof(s->title));
+    memset(s->artist, 0, sizeof(s->artist));
+    s->position_known = false;
+    s->duration_known = false;
+    s->position_ms = 0;
+    s->duration_ms = 0;
+}
+
 static inline void speaker_state_connection(speaker_state_t *s, speaker_connection_t connection)
 {
     s->connection = connection;
     if (connection != SPEAKER_CONNECTED)
     {
+        speaker_state_clear_media(s);
         s->streaming = false;
         s->sample_rate_hz = 0;
         s->playback = SPEAKER_PLAYBACK_UNKNOWN;

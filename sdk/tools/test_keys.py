@@ -201,13 +201,22 @@ int main(void)
  assert(app_refresh_ui(&ui,ESP_ERR_NOT_SUPPORTED)==ESP_OK);
  assert(strcmp(displayed.message,"示例尚未实现此操作")==0);
  /* 模拟手机更新：真实服务音量覆盖显示，歌曲字段继续由应用快照保留。 */
- strcpy(ui.title,"保留曲目"); service.volume=100; service.volume_percent=79; service.master_vol=39;
+ strcpy(ui.lyrics[1],"保留歌词");
+ strcpy(service.title,"手机曲目"); strcpy(service.artist,"手机歌手");
+ service.position_known=true; service.duration_known=true;
+ service.position_ms=3000; service.duration_ms=90000;
+ service.volume=100; service.volume_percent=79; service.master_vol=39;
  service.connection=SPEAKER_CONNECTED; service.avrcp_connected=true;
  service.playback=SPEAKER_PLAYBACK_PLAYING;
  service.volume_sync_result=ESP_FAIL;
  assert(app_refresh_ui(&ui,ESP_OK)==ESP_OK && displayed.volume_percent==79);
  assert(displayed.connected && displayed.playing && displayed.control_available);
- assert(strcmp(displayed.title,"保留曲目")==0 && strstr(displayed.message,"手机同步失败")!=NULL);
+ assert(strcmp(displayed.title,"手机曲目")==0 && strcmp(displayed.artist,"手机歌手")==0);
+ assert(displayed.position_known && displayed.duration_known && displayed.position_ms==3000 && displayed.duration_ms==90000);
+ assert(strcmp(displayed.lyrics[1],"保留歌词")==0 && strstr(displayed.message,"手机同步失败")!=NULL);
+ service.title[0]=0; service.artist[0]=0; service.position_known=false; service.duration_known=false;
+ assert(app_refresh_ui(&ui,ESP_OK)==ESP_OK && displayed.title[0]==0 && displayed.artist[0]==0);
+ assert(!displayed.position_known && !displayed.duration_known);
  service.volume_sync_result=ESP_OK; brightness_error=ESP_FAIL;
  assert(app_refresh_ui(&ui,ESP_OK)==ESP_OK && displayed.message[0]==0 && !displayed.brightness_available);
  update_error=ESP_FAIL;

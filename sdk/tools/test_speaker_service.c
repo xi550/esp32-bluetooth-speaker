@@ -21,6 +21,14 @@ static esp_err_t volume_error = ESP_OK;
 static esp_avrc_ct_cb_param_t pending_response;
 static esp_avrc_rn_rsp_t last_volume_response;
 static uint8_t last_volume, last_key, last_key_state;
+static unsigned metadata_queries, track_subscriptions;
+static esp_err_t metadata_error, track_error;
+esp_err_t esp_avrc_ct_send_metadata_cmd(uint8_t tl, uint8_t mask)
+{
+    assert(!lock_depth && tl == TL_METADATA && mask == MEDIA_ATTRIBUTES);
+    ++metadata_queries;
+    return metadata_error;
+}
 
 QueueHandle_t xQueueCreate(unsigned depth, unsigned size)
 {
@@ -71,7 +79,13 @@ esp_err_t esp_avrc_ct_send_get_rn_capabilities_cmd(uint8_t tl) { assert(!lock_de
 esp_err_t esp_avrc_ct_send_get_play_status_cmd(uint8_t tl) { assert(!lock_depth); ++status_queries; return ESP_OK; }
 esp_err_t esp_avrc_ct_send_register_notification_cmd(uint8_t tl, uint8_t event, uint32_t param)
 {
-    assert(!lock_depth && tl == TL_NOTIFICATION && event == ESP_AVRC_RN_PLAY_STATUS_CHANGE);
+    assert(!lock_depth);
+    if (event == ESP_AVRC_RN_TRACK_CHANGE) {
+        assert(tl == TL_TRACK_CHANGE);
+        ++track_subscriptions;
+        return track_error;
+    }
+    assert(tl == TL_NOTIFICATION && event == ESP_AVRC_RN_PLAY_STATUS_CHANGE);
     ++subscriptions; return ESP_OK;
 }
 bool esp_avrc_rn_evt_bit_mask_operation(esp_avrc_bit_mask_op_t op, esp_avrc_rn_evt_cap_mask_t *mask,
@@ -88,7 +102,7 @@ esp_err_t esp_avrc_tg_send_rn_rsp(esp_avrc_rn_event_ids_t event, esp_avrc_rn_rsp
 }
 esp_err_t esp_avrc_ct_send_passthrough_cmd(uint8_t tl, uint8_t key, uint8_t key_state)
 {
-    assert(!lock_depth && tl >= 3 && tl <= 15);
+    assert(!lock_depth && tl >= 5 && tl <= 15);
     ++sent_keys; last_key = key; last_key_state = key_state;
     pending_response.psth_rsp.tl = tl;
     pending_response.psth_rsp.key_code = key;
@@ -183,6 +197,114 @@ static void check_master_volumes(void)
     }
     tg.conn_stat.connected = false;
     avrc_tg_cb(ESP_AVRC_TG_CONNECTION_STATE_EVT, &tg);
+}
+
+static void metadata_text(uint8_t attr, const char *text, int length)
+{
+    esp_avrc_ct_cb_param_t p = {0};
+    p.meta_rsp.attr_id = attr;
+    p.meta_rsp.attr_text = (uint8_t *)text;
+    p.meta_rsp.attr_length = length;
+    avrc_ct_cb(ESP_AVRC_CT_METADATA_RSP_EVT, &p);
+}
+
+static void media_status(uint32_t position, uint32_t duration, esp_avrc_playback_stat_t status)
+{
+    esp_avrc_ct_cb_param_t p = {0};
+    p.play_status_rsp.song_position = position;
+    p.play_status_rsp.song_length = duration;
+    p.play_status_rsp.play_status = status;
+    avrc_ct_cb(ESP_AVRC_CT_PLAY_STATUS_RSP_EVT, &p);
+}
+
+static void check_media(void)
+{
+    connection(ESP_A2D_CONNECTION_STATE_CONNECTED);
+    ct_connection(true);
+    metadata_error = ESP_FAIL;
+    protocol_step();
+    assert(metadata_requested && !metadata_pending);
+    metadata_error = ESP_OK;
+    unsigned requests = metadata_queries;
+    protocol_step();
+    assert(metadata_queries == requests + 1 && metadata_pending == MEDIA_ATTRIBUTES);
+    char title[] = "中文音乐";
+    metadata_text(ESP_AVRC_MD_ATTR_TITLE, title, sizeof(title)-1);
+    memset(title, 'x', sizeof(title)-1); /* SDK 借用内存必须已经复制。 */
+    assert(state.title[0] == 0); /* 分批属性收齐后才发布。 */
+    metadata_text(ESP_AVRC_MD_ATTR_ARTIST, "歌手", 6);
+    metadata_text(ESP_AVRC_MD_ATTR_PLAYING_TIME, "180000", 6);
+    assert(strcmp(state.title,"中文音乐") == 0 && strcmp(state.artist,"歌手") == 0);
+    assert(state.duration_known && state.duration_ms == 180000 && !metadata_pending);
+    /* 标题变化后重查时间，旧查询响应不能把旧进度带回来。 */
+    media_status(90000, 200000, ESP_AVRC_PLAYBACK_PLAYING);
+    assert(!state.position_known);
+    protocol_step();
+    media_status(0, 180000, ESP_AVRC_PLAYBACK_PLAYING);
+    assert(state.position_known && state.position_ms == 0 && state.duration_known);
+    assert(state.playback == SPEAKER_PLAYBACK_PLAYING);
+    ticks += 999; requests = status_queries; protocol_step();
+    assert(status_queries == requests);
+    ticks += 1; protocol_step();
+    assert(status_queries == requests + 1);
+    media_status(UINT32_MAX, UINT32_MAX, ESP_AVRC_PLAYBACK_PAUSED);
+    assert(!state.position_known && state.duration_known && state.duration_ms == 180000 && state.position_ms == 0);
+    assert(state.playback == SPEAKER_PLAYBACK_PAUSED);
+    /* 通知能力、注册失败重试及曲目变更后重新注册。 */
+    esp_avrc_ct_cb_param_t caps = {0};
+    caps.get_rn_caps_rsp.evt_set.bits = (1u << ESP_AVRC_RN_TRACK_CHANGE) | (1u << ESP_AVRC_RN_PLAY_STATUS_CHANGE);
+    avrc_ct_cb(ESP_AVRC_CT_GET_RN_CAPABILITIES_RSP_EVT, &caps);
+    track_error = ESP_FAIL; protocol_step(); assert(track_notification_requested);
+    track_error = ESP_OK; unsigned registered = track_subscriptions;
+    protocol_step(); assert(track_subscriptions == registered+1 && !track_notification_requested);
+    esp_avrc_ct_cb_param_t track = {0}; track.change_ntf.event_id = ESP_AVRC_RN_TRACK_CHANGE;
+    avrc_ct_cb(ESP_AVRC_CT_CHANGE_NOTIFY_EVT, &track);
+    assert(state.title[0] == 0 && state.artist[0] == 0 && !state.duration_known);
+    protocol_step(); assert(metadata_pending == MEDIA_ATTRIBUTES);
+    metadata_text(ESP_AVRC_MD_ATTR_TITLE, "过期曲目", 12);
+    avrc_ct_cb(ESP_AVRC_CT_CHANGE_NOTIFY_EVT, &track); /* 前一批未结束，再次切歌。 */
+    metadata_text(ESP_AVRC_MD_ATTR_ARTIST, "旧歌手", 9);
+    metadata_text(ESP_AVRC_MD_ATTR_PLAYING_TIME, "100", 3);
+    assert(state.title[0] == 0 && state.artist[0] == 0);
+    protocol_step();
+    metadata_text(ESP_AVRC_MD_ATTR_ARTIST, "新歌手", 9); /* 属性顺序不限。 */
+    metadata_text(ESP_AVRC_MD_ATTR_TITLE, "新曲目", 9);
+    metadata_text(ESP_AVRC_MD_ATTR_PLAYING_TIME, "120000", 6);
+    assert(strcmp(state.title,"新曲目") == 0 && strcmp(state.artist,"新歌手") == 0);
+    assert(state.duration_ms == 120000);
+    /* 无曲目通知也定期兜底；缺少属性在超时后合并，不沿用旧歌手。 */
+    ticks += 10000; protocol_step();
+    metadata_text(ESP_AVRC_MD_ATTR_TITLE, "只有歌名", 12);
+    ticks += 2000; protocol_step();
+    assert(strcmp(state.title,"只有歌名") == 0 && state.artist[0] == 0 && !metadata_pending);
+    /* UTF-8 容量边界、截断和非法编码，不读取长度以外的字节。 */
+    char text[8];
+    speaker_copy_text(text,sizeof(text),(const uint8_t *)"你好呀",9);
+    assert(strcmp(text,"你好") == 0);
+    speaker_copy_text(text,sizeof(text),(const uint8_t *)"你好",5);
+    assert(strcmp(text,"你") == 0);
+    speaker_copy_text(text,sizeof(text),(const uint8_t *)"A\xc0\xaf",3);
+    assert(strcmp(text,"A") == 0);
+    speaker_copy_text(text,sizeof(text),(const uint8_t *)"\xed\xa0\x80",3);
+    assert(text[0] == 0);
+    speaker_copy_text(text,sizeof(text),(const uint8_t *)"\xf4\x90\x80\x80",4);
+    assert(text[0] == 0);
+    speaker_copy_text(text,sizeof(text),NULL,7); assert(text[0] == 0);
+    speaker_copy_text(text,sizeof(text),(const uint8_t *)"abc",-1); assert(text[0] == 0);
+    uint32_t duration;
+    assert(!speaker_parse_duration((const uint8_t *)"4294967296",10,&duration));
+    assert(!speaker_parse_duration((const uint8_t *)"-1",2,&duration));
+    assert(!speaker_parse_duration((const uint8_t *)"1x",2,&duration));
+    assert(!speaker_parse_duration((const uint8_t *)"0",1,&duration));
+    /* 断连清空媒体，晚到的回调不能重新填入旧曲目；重连会重新请求。 */
+    ct_connection(false);
+    metadata_text(ESP_AVRC_MD_ATTR_TITLE,"旧曲目",9);
+    media_status(1,2,ESP_AVRC_PLAYBACK_PLAYING);
+    assert(state.title[0] == 0 && state.artist[0] == 0 && !state.position_known);
+    ct_connection(true); protocol_step();
+    assert(metadata_pending == MEDIA_ATTRIBUTES);
+    connection(ESP_A2D_CONNECTION_STATE_DISCONNECTED);
+    assert(!metadata_pending && state.title[0] == 0 && !state.duration_known);
 }
 
 int main(void)
@@ -319,6 +441,7 @@ int main(void)
     assert(speaker_service_wait_state(&snapshot, 0) == ESP_OK && snapshot.volume == 127);
     assert(speaker_service_wait_state(&snapshot, 0) == ESP_ERR_TIMEOUT);
     assert(speaker_service_get_state(&snapshot) == ESP_OK && snapshot.volume == 127);
+    check_media();
     /* Exhaust all PCM16 values at mute, partial gain and unity, both channels. */
     for (unsigned gain = 0; gain <= 127; ++gain) {
         for (int sample = INT16_MIN; sample <= INT16_MAX; ++sample) {
@@ -327,6 +450,6 @@ int main(void)
             assert(stereo[0] == sample * (int)gain / 127 && stereo[1] == stereo[0]);
         }
     }
-    puts("PASS: state/reconnect, PCM copy/pause/format/overflow, AVRCP control/reject/timeout/cancel, status retry, master volume levels/steps/phone mapping, volume sync/retry, exhaustive PCM16 gain");
+    puts("PASS: state/reconnect, PCM copy/pause/format/overflow, AVRCP control/reject/timeout/cancel, status retry, media metadata/UTF-8/track/position/retry/disconnect, master volume levels/steps/phone mapping, volume sync/retry, exhaustive PCM16 gain");
     return 0;
 }
